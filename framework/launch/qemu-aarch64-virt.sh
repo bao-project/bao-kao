@@ -1,5 +1,5 @@
 #!/usr/bin/env nix-shell
-#!nix-shell --pure -p unixtools.netstat -p qemu -i bash
+#!nix-shell -i bash -p 'with import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/0c924ec948073580a3c3d438746388d05a38028b.zip") {}; qemu'
 
 # Check if a version argument is provided
 if [ -z "$4" ]; then
