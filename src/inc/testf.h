@@ -19,6 +19,7 @@
 #define TESTS ""
 #endif
 
+#include "testf_commands.h"
 #include "testf_assert.h"
 #include <stdio.h>
 
@@ -43,10 +44,6 @@ extern unsigned int testframework_start, testframework_end;
     GREEN();              \
     printf("[SUCCESS] "); \
     COLOR_RESET();
-
-#define START_TAG() printf("[TESTF-C] START\n");
-
-#define END_TAG()   printf("[TESTF-C] END\n");
 
 #if (TESTF_LOG_LEVEL > 0)
 #define LOG_FAILURE()                                                 \
