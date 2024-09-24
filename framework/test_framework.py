@@ -160,6 +160,8 @@ def deploy_test(platform, gicv):
         run_cmd += " " + opensbi_elf_path
         run_cmd += " " + bao_bin_path
 
+    logger = connection.TestLogger()
+
     # Get the ports opened before running QEMU
     initial_pts_ports = connection.scan_pts_ports()
 
@@ -182,7 +184,7 @@ def deploy_test(platform, gicv):
     # Find the difference between the initial and final pts ports
     diff_ports = connection.diff_ports(initial_pts_ports, final_pts_ports)
 
-    connection.connect_to_platform_port(diff_ports, args.echo)
+    logger.connect_to_platform_port(diff_ports, args.echo)
     terminate_children_processes(process)
 
 def clean_output():
