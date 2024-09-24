@@ -13,7 +13,7 @@ unsigned int testframework_fails;
 
 void testf_entry(void)
 {
-    START_TAG();
+    COMMAND_START();
     // codegen.py section begin
 
     // codegen.py section end
@@ -24,6 +24,6 @@ void testf_entry(void)
         INFO_TAG();
         printf("No tests were executed!\n");
     }
-    END_TAG();
+    COMMAND_END();
     return;
 }
