@@ -132,7 +132,7 @@ def get_file_path(filename):
     print(f"File '{filename}' not found in any 'result' directory.")
     sys.exit(-1)
 
-def deploy_test(platform, gicv):
+def deploy_test(platform, gicv, guest_os):
     """
     Deploy a test on a specific platform.
 
@@ -159,6 +159,8 @@ def deploy_test(platform, gicv):
         run_cmd += " " + arch
         run_cmd += " " + opensbi_elf_path
         run_cmd += " " + bao_bin_path
+
+    run_cmd += " " + guest_os
 
     logger = connection.TestLogger()
 
@@ -296,4 +298,9 @@ if __name__ == '__main__':
 
     print("Interrupt Controller: " + args.gicv)
     print(cons.BLUE_TEXT + "Launching QEMU..." + cons.RESET_COLOR)
-    deploy_test(platfrm, args.gicv)
+    
+    recipe_name = recipe.split("tests/recipes/")[1]
+    recipe_name = recipe_name.split("/")[0]
+    guest_os = recipe_name.split("-")[1]
+
+    deploy_test(platfrm, args.gicv, guest_os)
