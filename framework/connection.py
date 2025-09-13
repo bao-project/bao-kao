@@ -27,6 +27,7 @@ class TestLogger:
         self.logger_commands = {
             f"{self.test_tags['c']} SEND_CHAR" : self.send_char,
             f"{self.test_tags['c']} SET_TIMEOUT" : self.set_timeout,
+            f"{self.test_tags['c']} CLEAR_TIMEOUT" : self.clear_timeout
         }
         self.log_level = {
             'full'  : self.echo_log_full,
@@ -79,7 +80,7 @@ class TestLogger:
 
         threading.Thread(target=timeout_thread, args=[timeout]).start()
 
-    def unset_timeout(self):
+    def clear_timeout(self, _=None):
         """
         Cancel the timeout
         """
@@ -185,7 +186,7 @@ class TestLogger:
                         self.logger_commands[command](new_line)
                     else:
                         cons.TEST_RESULTS = new_line
-                        self.unset_timeout()
+                        self.clear_timeout()
 
                 if self.list_events['event_stop_listener'].is_set():
                     break
