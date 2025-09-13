@@ -12,6 +12,9 @@ import subprocess
 import psutil
 import constants as cons
 import connection
+import datetime
+import shlex
+from datetime import datetime
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
@@ -79,21 +82,87 @@ def parse_args():
     input_args = parser.parse_args()
     return input_args
 
-def run_command_in_terminal(command):
+# def run_command_in_terminal(command):
+#     """
+#     Run a command in a new Terminal window.
+
+#     Args:
+#         command (str): The command to execute.
+#     """
+#     # pylint: disable=R1732
+#     terminal_process = subprocess.Popen(
+#         ['/bin/bash', '-c', command],
+#         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE
+#     )
+#     # pylint: enable=R1732
+
+#     return terminal_process
+
+def print_status_message(message, label="status", status=None, exit_on_failure=False):
     """
-    Run a command in a new Terminal window.
+    Print a status message with optional success/failure formatting and timestamp.
 
     Args:
-        command (str): The command to execute.
+        message (str): The message to print.
+        label (str): Label to categorize the message.
+        status (str or None): Use 'success', 'failure', or None for neutral.
+        exit_on_failure (bool): Exit the script if failure.
     """
-    # pylint: disable=R1732
-    terminal_process = subprocess.Popen(
-        ['/bin/bash', '-c', command],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE
-    )
-    # pylint: enable=R1732
+    now = datetime.now()
+    time_str = now.strftime("%H:%M:%S")
+    label_fmt = f"[{label.upper():<10}]"
 
-    return terminal_process
+    # Determine formatting
+    if status == "success":
+        status_fmt = "[SUCCESS]"
+        color = cons.GREEN_TEXT
+    elif status == "failure":
+        status_fmt = "[FAILURE]"
+        color = cons.RED_TEXT
+    else:
+        status_fmt = " " * 9  # Neutral alignment
+        color = ""
+
+    desc_fmt = message[:cons.DESC_WIDTH].ljust(cons.DESC_WIDTH)
+    print(f"{label_fmt} {color}{status_fmt} {desc_fmt}{cons.RESET_COLOR} ({time_str})")
+
+    if status == "failure" and exit_on_failure:
+        sys.exit(-1)
+
+def run_command_in_terminal(command, label="command", verbose="Running command..."):
+    """
+    Run a command in the background and redirect output to a log file.
+
+    Args:
+        command (str): The shell command to run.
+        label (str): A label to include in the log filename.
+        verbose (str): Description shown before launching.
+    """
+    now = datetime.now()
+    time_str = now.strftime("%H:%M:%S")
+    file_timestamp = now.strftime("%Y%m%d_%H%M%S")
+
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{label}_{file_timestamp}.log")
+    log_str = f"[Log: {log_file}]"
+
+    label_fmt = f"[{label.upper():<10}]"
+    status_fmt = " " * 9  # Neutral alignment for visual consistency
+    desc_fmt = verbose[:cons.DESC_WIDTH].ljust(cons.DESC_WIDTH)
+
+    print(f"{label_fmt} {status_fmt} {desc_fmt} ({time_str}) {log_str}")
+
+    with open(log_file, "w") as log_fp:
+        process = subprocess.Popen(
+            ['/bin/bash', '-c', command],
+            stdout=log_fp,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL
+        )
+
+    return process
+
 
 def terminate_children_processes(parent_process):
     """
@@ -168,7 +237,9 @@ def deploy_test(platform, gicv, guest_os):
     initial_pts_ports = connection.scan_pts_ports()
 
     # Launch QEMU
-    process = run_command_in_terminal(run_cmd)
+    process = run_command_in_terminal(
+        run_cmd, label="qemu", 
+        verbose="Launching QEMU platform...") # run_command_in_terminal(run_cmd)
 
     # Initially set the end ports as the ports obtained before running QEMU
     final_pts_ports = initial_pts_ports
@@ -232,75 +303,51 @@ def move_results_to_output():
         count += 1
 
 if __name__ == '__main__':
-
-    print(cons.BLUE_TEXT + "Framework init..." + cons.RESET_COLOR)
-    print(cons.BLUE_TEXT +
-          "Framework init..." +
-          cons.RESET_COLOR)
+    print_status_message("Framework init...", label="init")
 
     args = parse_args()
 
     if args.clean:
-        print(cons.BLUE_TEXT +
-            "Cleaning output directory..." +
-            cons.RESET_COLOR)
-
+        print_status_message("Cleaning output directory...", label="cleanup")
         clean_output()
+        print_status_message("Output directory clean!", label="cleanup", status="success", exit_on_failure=True)
 
-        print(cons.GREEN_TEXT +
-            "Output directory clean!" +
-            cons.RESET_COLOR)
-        sys.exit(-1)
-
-
-    print(cons.BLUE_TEXT + "Running nix build..." + cons.RESET_COLOR)
+    print_status_message("Running nix build...", label="nix")
 
     if args.platform is None:
-        print(cons.RED_TEXT +
-        "Error: Please provide a --platform." +
-        cons.RESET_COLOR)
+        print_status_message("Error: Please provide a --platform.", label="args", status="failure", exit_on_failure=True)
     else:
         platfrm = args.platform
 
     if args.recipe is None:
-        print(cons.RED_TEXT +
-        "Error: Please provide the --recipe argument." +
-        cons.RESET_COLOR)
+        print_status_message("Error: Please provide the --recipe argument.", label="args", status="failure", exit_on_failure=True)
     else:
         recipe = args.recipe
-        print("Recipe .nix file: " + recipe)
 
-    BUILD_CMD = 'nix-build ' + recipe
-    BUILD_CMD += " --argstr platform " + platfrm
-    BUILD_CMD += " --argstr log_level " + str(args.log_level)
-
+    # Construct build command
+    BUILD_CMD = f"nix-build {recipe} --argstr platform {platfrm} --argstr log_level {args.log_level}"
     if args.gicv:
-        BUILD_CMD += " --argstr GIC_VERSION " + args.gicv
+        BUILD_CMD += f" --argstr GIC_VERSION {args.gicv}"
     if args.irqc:
-        BUILD_CMD += " --argstr IRQC " + args.irqc
+        BUILD_CMD += f" --argstr IRQC {args.irqc}"
     if args.ipic:
-        BUILD_CMD += " --argstr IPIC " + args.ipic
+        BUILD_CMD += f" --argstr IPIC {args.ipic}"
 
-    print("Building with command: " + BUILD_CMD)
-    res = os.system(BUILD_CMD)
-    if res==0:
-        print(cons.GREEN_TEXT +
-            "nix build successfully completed..." +
-            cons.RESET_COLOR)
+    build_process = run_command_in_terminal(
+        BUILD_CMD,
+        label="nix_build",
+        verbose="Building setup with nix..."
+    )
 
+    ret_code = build_process.wait()
+    if ret_code == 0:
+        print_status_message("nix build successfully completed.", label="nix_build", status="success")
     else:
-        print(cons.RED_TEXT +
-               "nix build failed..." +
-               cons.RESET_COLOR)
-        sys.exit(-1)
+        print_status_message("nix build failed.", label="nix_build", status="failure", exit_on_failure=True)
 
     move_results_to_output()
 
-    print("Interrupt Controller: " + args.gicv)
-    print(cons.BLUE_TEXT + "Launching QEMU..." + cons.RESET_COLOR)
-    
-    recipe_name = recipe.split("tests/recipes/")[1]
-    recipe_name = recipe_name.split("/")[0]
+    recipe_name = recipe.split("tests/recipes/")[1].split("/")[0]
     guest_os = recipe_name.split("-")[1]
 
     deploy_test(platfrm, args.gicv, guest_os)

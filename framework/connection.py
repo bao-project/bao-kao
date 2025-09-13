@@ -113,6 +113,16 @@ class TestLogger:
         is_tf_section = False
         for line in serial_results:
             if self.test_tags['start'] in line:
+                print(
+                    "\n" +
+                    "=========================================" +
+                    "=========================================\n" +
+                    "                            Bao Test Framework\n" +
+                    "                                 RESULTS\n" +
+                    "=========================================" +
+                    "=========================================" +
+                    "\n"
+                )
                 is_tf_section = True
 
             elif self.test_tags['end'] in line:
@@ -180,6 +190,10 @@ class TestLogger:
                     new_line = new_line.replace(old, new)
                 res_log.append(new_line)
 
+                # # if line is not empty, print it
+                # if new_line.strip():
+                #     print(new_line, end="")
+
                 if self.test_tags['c'] in new_line:
                     command = new_line.split()[0] + " " + new_line.split()[1]
                     if command in self.logger_commands:
@@ -198,12 +212,6 @@ class TestLogger:
 
             self.log_level[echo](res_log)
 
-        print(cons.BLUE_TEXT +
-            "Closing connection to " +
-            ser_port.name +
-            "..." +
-            cons.RESET_COLOR)
-
         ser_port.close()
 
 
@@ -217,11 +225,6 @@ class TestLogger:
                             cons.UART_BAUDRATE,
                             timeout=cons.UART_TIMEOUT
                             )
-        print(cons.BLUE_TEXT +
-            "Connecting to " +
-            port_name +
-            "..." +
-            cons.RESET_COLOR)
 
         ser.close()
         ser.open()
