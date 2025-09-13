@@ -39,6 +39,10 @@ ifdef TESTF_LOG_LEVEL
 TESTF_FLAGS+=-DTESTF_LOG_LEVEL=$(TESTF_LOG_LEVEL)
 endif
 
+ifdef TESTF_NO_RTE
+TESTF_FLAGS+=-Dno_rte
+endif
+
 else
 TESTF_SRCS += $(TESTF_SRC_DIR)/testf_weak.c 
 
