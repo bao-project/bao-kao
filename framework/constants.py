@@ -36,3 +36,4 @@ MAIN_DIR = '../'
 
 PYTHON_TAG = "[TESTF-PY]"
 C_TAG = "[TESTF-C]"
+DESC_WIDTH = 60
