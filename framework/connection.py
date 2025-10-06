@@ -22,12 +22,13 @@ class TestLogger:
             'end': "[TESTF-C] END",
             'success': "[TESTF-C] SUCCESS",
             'failure': "[TESTF-C] FAILURE",
-            'exit': "[TESTF-C] EXIT"
+            'exit': "[TESTF-C] EXIT",
+            'boot_failure': "Synchronous Abort"
         }
         self.logger_commands = {
             f"{self.test_tags['c']} SEND_CHAR" : self.send_char,
             f"{self.test_tags['c']} SET_TIMEOUT" : self.set_timeout,
-            f"{self.test_tags['c']} CLEAR_TIMEOUT" : self.clear_timeout
+            f"{self.test_tags['c']} CLEAR_TIMEOUT" : self.clear_timeout,
         }
         self.log_level = {
             'full'  : self.echo_log_full,
@@ -190,9 +191,13 @@ class TestLogger:
                     new_line = new_line.replace(old, new)
                 res_log.append(new_line)
 
-                # # if line is not empty, print it
-                # if new_line.strip():
-                #     print(new_line, end="")
+                if self.test_tags['boot_failure'] in new_line:
+                    print(cons.RED_TEXT +
+                          new_line + "Boot failed." +
+                          cons.RESET_COLOR)
+                    self.list_events['event_stop_listener'].set()
+                    cons.TEST_RESULTS = new_line
+                    self.clear_timeout()
 
                 if self.test_tags['c'] in new_line:
                     command = new_line.split()[0] + " " + new_line.split()[1]
