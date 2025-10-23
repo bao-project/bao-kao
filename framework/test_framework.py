@@ -14,6 +14,7 @@ import constants as cons
 import connection
 import datetime
 import shlex
+import re
 from datetime import datetime
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -174,8 +175,11 @@ def terminate_children_processes(parent_process):
     parent = psutil.Process(parent_process.pid)
     children = parent.children(recursive=True)
     for child in children:
-        child.terminate()
-        child.wait()
+        try:
+            child.terminate()
+            child.wait()
+        except psutil.NoSuchProcess:
+            pass
 
 def get_file_path(filename):
     """
@@ -201,31 +205,77 @@ def get_file_path(filename):
     print(f"File '{filename}' not found in any 'result' directory.")
     sys.exit(-1)
 
-def deploy_test(platform, gicv, guest_os):
+def extract_vm_regions(config_file_path):
+    """
+    Returns a flat list of region base addresses (as strings) for all VMs.
+    """
+    with open(config_file_path) as f:
+        content = f.read()
+
+    vm_region_blocks = re.findall(r'\.regions\s*=\s*\(struct vm_mem_region\[\]\)\s*\{([^}]+)\}', content)
+    bases = []
+    for block in vm_region_blocks:
+        bases += [base.split('=')[1].strip() for base in re.findall(r'\.base\s*=\s*0x[0-9A-Fa-f]+', block)]
+    return bases
+
+def extract_guest_names(nix_recipe_path):
+    """
+    Extract 'guest_name' values from the .nix file.
+    Returns a list of strings.
+    """
+    names = []
+    with open(nix_recipe_path) as f:
+        for line in f:
+            match = re.search(r'guest_name\s*=\s*"([^"]+)"', line)
+            if match:
+                names.append(match.group(1))
+    return names
+
+def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path=None):
     """
     Deploy a test on a specific platform.
 
     Args:
         platform (str): The platform to deploy the test on.
     """
-    if platform in ["qemu-aarch64-virt"]:
-        arch = platform.split("-")[1]
-        bao_bin_path = get_file_path("bao.bin")
-        flash_bin_path = get_file_path("flash.bin")
+    bao_bin_path = get_file_path("bao.bin")
+    if platform in ["qemu-aarch64-virt", "fvp-a", "fvp-r"]:
         gic_version = gicv.split("GICV")[1]
 
-        run_cmd = "./launch/qemu-aarch64-virt.sh"
-        run_cmd += " " + arch
-        run_cmd += " " + flash_bin_path
+        run_cmd = "./launch/" + platform + ".sh"
+
+        if platform == "qemu-aarch64-virt":
+            flash_bin_path = get_file_path("flash.bin")
+            run_cmd += " " + flash_bin_path
+        
+        elif platform == "fvp-a":
+            fip_bin_path = get_file_path("fip.bin")
+            bl1_bin_path = get_file_path("bl1.bin")
+            run_cmd += " " + bl1_bin_path
+            run_cmd += " " + fip_bin_path
+
+            
+            
+
+
         run_cmd += " " + bao_bin_path
         run_cmd += " " + str(gic_version)
 
+        if platform == "fvp-r":
+            assert config_file_path and nix_recipe_path, "FVP-R requires config and recipe paths."
+            vm_regions = extract_vm_regions(config_file_path)
+            guest_names = extract_guest_names(nix_recipe_path)
+
+            run_cmd += " aarch64"
+
+            for idx, region_base in enumerate(vm_regions):
+                guest_bin_path = get_file_path(guest_names[idx] + ".bin")
+                run_cmd += f" {guest_bin_path}@0x{int(region_base, 16):X}"
+
+
     elif platform in ["qemu-riscv64-virt"]:
-        arch = platform.split("-")[1]
-        bao_bin_path = get_file_path("bao.bin")
         opensbi_elf_path = get_file_path("opensbi.elf")
         run_cmd = "./launch/qemu-riscv64-virt.sh"
-        run_cmd += " " + arch
         run_cmd += " " + opensbi_elf_path
         run_cmd += " " + bao_bin_path
 
@@ -237,6 +287,7 @@ def deploy_test(platform, gicv, guest_os):
     initial_pts_ports = connection.scan_pts_ports()
 
     # Launch QEMU
+    print("Launching platform...", run_cmd)
     process = run_command_in_terminal(
         run_cmd, label="qemu", 
         verbose="Launching QEMU platform...") # run_command_in_terminal(run_cmd)
@@ -253,7 +304,7 @@ def deploy_test(platform, gicv, guest_os):
                 f"Error launching QEMU (exited with code {process.returncode})" +
                 cons.RESET_COLOR)
             sys.exit(-1)
-
+    
     # Find the difference between the initial and final pts ports
     diff_ports = connection.diff_ports(initial_pts_ports, final_pts_ports)
 
@@ -348,6 +399,17 @@ if __name__ == '__main__':
     move_results_to_output()
 
     recipe_name = recipe.split("tests/recipes/")[1].split("/")[0]
-    guest_os = recipe_name.split("-")[1]
+    guest_os = recipe_name.split("-")[0]
 
-    deploy_test(platfrm, args.gicv, guest_os)
+    recipe_dir = os.path.dirname(recipe)
+    config_path = os.path.join(recipe_dir, "configs", platfrm) + ".c"
+
+
+    deploy_test(platfrm, args.gicv, guest_os, 
+                config_file_path=config_path, 
+                nix_recipe_path=recipe)
+    
+    if(cons.TEST_RESULTS.get('FAIL', 0)) > 0:
+        sys.exit(0)
+    else:
+        sys.exit(-1)
