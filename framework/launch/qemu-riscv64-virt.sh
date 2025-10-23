@@ -2,15 +2,14 @@
 #!nix-shell -i bash -p 'with import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/0c924ec948073580a3c3d438746388d05a38028b.zip") {}; qemu_full'
 
 # Check if the correct number of arguments is provided
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <qemu-platform> <opensbi_elf_path> <bao-bin-path> <guest_OS>"
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <opensbi_elf_path> <bao-bin-path> <guest_OS>"
     exit 1
 fi
 
-qemu_platform="$1"
-opensbi_elf_path="$2"
-bao_bin_path="$3"
-guest_OS="$4"
+opensbi_elf_path="$1"
+bao_bin_path="$2"
+guest_OS="$3"
 
 # Check if port 5555 is already in use
 if netstat -tuln | grep ":5555 " &>/dev/null; then
@@ -29,7 +28,7 @@ else
 fi
 
 # Run QEMU
-qemu-system-"$qemu_platform" -nographic \
+qemu-system-riscv64 -nographic \
     -M virt -cpu rv64 -m 4G -smp 4 \
     -bios "$opensbi_elf_path" \
     -device loader,file="$bao_bin_path",addr=0x80200000,force-raw=on \

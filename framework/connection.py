@@ -152,7 +152,7 @@ class TestLogger:
         """
 
         threads = []
-
+    
         for port in ports_list:
             self.open_connection(port)
             new_thread = threading.Thread(target=self.listener, args=[self.serial_port, echo])
@@ -183,6 +183,7 @@ class TestLogger:
         while not self.list_events['event_stop_listener'].is_set():
             res = b""
             res_log = []
+            boot_failure = False
 
             while not (res.endswith(b"\r\n") and (self.test_tags['end']).encode('utf-8') in res):
                 res = ser_port.readline()
@@ -198,6 +199,7 @@ class TestLogger:
                     self.list_events['event_stop_listener'].set()
                     cons.TEST_RESULTS = new_line
                     self.clear_timeout()
+                    boot_failure = True
 
                 if self.test_tags['c'] in new_line:
                     command = new_line.split()[0] + " " + new_line.split()[1]
@@ -210,10 +212,23 @@ class TestLogger:
                 if self.list_events['event_stop_listener'].is_set():
                     break
 
-            for line in reversed(res_log):
-                if self.test_tags['c'] in line:
-                    cons.TEST_RESULTS = line
-                    break
+            results = {}
+            self.clear_timeout()
+            if not boot_failure:
+                for line in reversed(res_log):
+                    if self.test_tags['c'] in line and "END" not in line:
+                        cons.TEST_RESULTS = line
+                        # parse results from something like [TESTF-C] TOTAL#4 SUCCESS#3 FAIL#1
+                        for item in line.split():
+                            if '#' in item:
+                                key, value = item.split('#', 1)
+                                results[key] = int(value)
+                        cons.TEST_RESULTS = results
+                        break
+                else:
+                    results["FAIL"] = 1
+                
+                cons.TEST_RESULTS = results
 
             self.log_level[echo](res_log)
 
