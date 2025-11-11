@@ -23,9 +23,10 @@
 #include "testf_assert.h"
 #include <stdio.h>
 
-#ifdef no_rte
+#if defined(no_rte) || defined(__clang_analyzer__) || defined(__CPPCHECK__)
 #include <stdbool.h>
-static inline bool cpu_is_master() {
+static inline bool cpu_is_master(void)
+{
     return true;
 }
 #else
@@ -100,7 +101,7 @@ extern unsigned int testframework_start, testframework_end;
         extern unsigned int testframework_tests;             \
         extern unsigned int testframework_fails;             \
         unsigned char failures = 0;                          \
-        if(cpu_is_master()) {                                \
+        if (cpu_is_master()) {                               \
             if (TESTF_LOG_LEVEL > 1) {                       \
                 printf("\n");                                \
                 INFO_TAG();                                  \
@@ -109,7 +110,7 @@ extern unsigned int testframework_start, testframework_end;
             testframework_tests++;                           \
         }                                                    \
         test_##suite##_##test(&failures);                    \
-        if(cpu_is_master()) {                                \
+        if (cpu_is_master()) {                               \
             if (failures) {                                  \
                 testframework_fails++;                       \
                 if (TESTF_LOG_LEVEL > 1) {                   \

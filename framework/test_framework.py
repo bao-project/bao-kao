@@ -9,13 +9,12 @@ import os
 import shutil
 import sys
 import subprocess
+import datetime
+import re
+from datetime import datetime
 import psutil
 import constants as cons
 import connection
-import datetime
-import shlex
-import re
-from datetime import datetime
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
@@ -130,6 +129,7 @@ def print_status_message(message, label="status", status=None, exit_on_failure=F
     if status == "failure" and exit_on_failure:
         sys.exit(-1)
 
+# pylint: disable=unspecified-encoding,consider-using-with
 def run_command_in_terminal(command, label="command", verbose="Running command..."):
     """
     Run a command in the background and redirect output to a log file.
@@ -209,13 +209,18 @@ def extract_vm_regions(config_file_path):
     """
     Returns a flat list of region base addresses (as strings) for all VMs.
     """
-    with open(config_file_path) as f:
-        content = f.read()
+    with open(config_file_path, encoding="utf-8") as file_handle:
+        content = file_handle.read()
 
-    vm_region_blocks = re.findall(r'\.regions\s*=\s*\(struct vm_mem_region\[\]\)\s*\{([^}]+)\}', content)
+    vm_region_blocks = re.findall(
+        r'\.regions\s*=\s*\(struct vm_mem_region\[\]\)\s*\{([^}]+)\}',
+        content)
+
     bases = []
     for block in vm_region_blocks:
-        bases += [base.split('=')[1].strip() for base in re.findall(r'\.base\s*=\s*0x[0-9A-Fa-f]+', block)]
+        bases += [
+            base.split('=')[1].strip() for base in re.findall(r'\.base\s*=\s*0x[0-9A-Fa-f]+',
+                                                              block)]
     return bases
 
 def extract_guest_names(nix_recipe_path):
@@ -224,14 +229,15 @@ def extract_guest_names(nix_recipe_path):
     Returns a list of strings.
     """
     names = []
-    with open(nix_recipe_path) as f:
-        for line in f:
+    with open(nix_recipe_path, encoding="utf-8") as file_handle:
+        for line in file_handle:
             match = re.search(r'guest_name\s*=\s*"([^"]+)"', line)
             if match:
                 names.append(match.group(1))
     return names
 
-def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path=None):
+# pylint: disable=too-many-locals
+def deploy_test(platform, gicv, guest_os_name, config_file_path=None, nix_recipe_path=None):
     """
     Deploy a test on a specific platform.
 
@@ -247,16 +253,12 @@ def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path
         if platform == "qemu-aarch64-virt":
             flash_bin_path = get_file_path("flash.bin")
             run_cmd += " " + flash_bin_path
-        
+
         elif platform == "fvp-a":
             fip_bin_path = get_file_path("fip.bin")
             bl1_bin_path = get_file_path("bl1.bin")
             run_cmd += " " + bl1_bin_path
             run_cmd += " " + fip_bin_path
-
-            
-            
-
 
         run_cmd += " " + bao_bin_path
         run_cmd += " " + str(gic_version)
@@ -279,7 +281,7 @@ def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path
         run_cmd += " " + opensbi_elf_path
         run_cmd += " " + bao_bin_path
 
-    run_cmd += " " + guest_os
+    run_cmd += " " + guest_os_name
 
     logger = connection.TestLogger()
 
@@ -289,7 +291,7 @@ def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path
     # Launch QEMU
     print("Launching platform...", run_cmd)
     process = run_command_in_terminal(
-        run_cmd, label="qemu", 
+        run_cmd, label="qemu",
         verbose="Launching QEMU platform...") # run_command_in_terminal(run_cmd)
 
     # Initially set the end ports as the ports obtained before running QEMU
@@ -304,7 +306,7 @@ def deploy_test(platform, gicv, guest_os, config_file_path=None, nix_recipe_path
                 f"Error launching QEMU (exited with code {process.returncode})" +
                 cons.RESET_COLOR)
             sys.exit(-1)
-    
+
     # Find the difference between the initial and final pts ports
     diff_ports = connection.diff_ports(initial_pts_ports, final_pts_ports)
 
@@ -361,22 +363,26 @@ if __name__ == '__main__':
     if args.clean:
         print_status_message("Cleaning output directory...", label="cleanup")
         clean_output()
-        print_status_message("Output directory clean!", label="cleanup", status="success", exit_on_failure=True)
+        print_status_message("Output directory clean!", label="cleanup",
+                             status="success", exit_on_failure=True)
 
     print_status_message("Running nix build...", label="nix")
 
     if args.platform is None:
-        print_status_message("Error: Please provide a --platform.", label="args", status="failure", exit_on_failure=True)
+        print_status_message("Error: Please provide a --platform.", label="args",
+                             status="failure", exit_on_failure=True)
     else:
         platfrm = args.platform
 
     if args.recipe is None:
-        print_status_message("Error: Please provide the --recipe argument.", label="args", status="failure", exit_on_failure=True)
+        print_status_message("Error: Please provide the --recipe argument.", label="args",
+                             status="failure", exit_on_failure=True)
     else:
         recipe = args.recipe
 
     # Construct build command
-    BUILD_CMD = f"nix-build {recipe} --argstr platform {platfrm} --argstr log_level {args.log_level}"
+    BUILD_CMD = f"nix-build {recipe} \
+        --argstr platform {platfrm} --argstr log_level {args.log_level}"
     if args.gicv:
         BUILD_CMD += f" --argstr GIC_VERSION {args.gicv}"
     if args.irqc:
@@ -392,9 +398,11 @@ if __name__ == '__main__':
 
     ret_code = build_process.wait()
     if ret_code == 0:
-        print_status_message("nix build successfully completed.", label="nix_build", status="success")
+        print_status_message("nix build successfully completed.",
+                             label="nix_build", status="success")
     else:
-        print_status_message("nix build failed.", label="nix_build", status="failure", exit_on_failure=True)
+        print_status_message("nix build failed.",
+                             label="nix_build", status="failure", exit_on_failure=True)
 
     move_results_to_output()
 
@@ -405,10 +413,10 @@ if __name__ == '__main__':
     config_path = os.path.join(recipe_dir, "configs", platfrm) + ".c"
 
 
-    deploy_test(platfrm, args.gicv, guest_os, 
-                config_file_path=config_path, 
+    deploy_test(platfrm, args.gicv, guest_os,
+                config_file_path=config_path,
                 nix_recipe_path=recipe)
-    
+
     if(cons.TEST_RESULTS.get('FAIL', 0)) > 0:
         sys.exit(0)
     else:

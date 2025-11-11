@@ -13,14 +13,14 @@ unsigned int testframework_fails;
 
 void testf_entry(void)
 {
-    if(cpu_is_master()){
+    if (cpu_is_master()) {
         COMMAND_START();
     }
     // codegen.py section begin
 
     // codegen.py section end
 
-    if(cpu_is_master()){
+    if (cpu_is_master()) {
         if (testframework_tests > 0) {
             LOG_TESTS();
         } else {
