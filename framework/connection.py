@@ -152,7 +152,7 @@ class TestLogger:
         """
 
         threads = []
-    
+
         for port in ports_list:
             self.open_connection(port)
             new_thread = threading.Thread(target=self.listener, args=[self.serial_port, echo])
@@ -170,55 +170,46 @@ class TestLogger:
 
     def listener(self, ser_port, echo):
         """
-        Listener to receive test results
+        Listener to receive test results.
         """
-        replacements = [
-            ('\\r\\n', '\r\n'),
-            ('\\x1b[0m\\x1b[1;', '\\x1b[1;'),
-            ('\\x1b[1;', '\033['),
-            ('\\x1b', '\033'),
-            ('#$#', '#')
-        ]
+        def decode_and_replace(res):
+            replacements = [
+                ('\\r\\n', '\r\n'),
+                ('\\x1b[0m\\x1b[1;', '\\x1b[1;'),
+                ('\\x1b[1;', '\033['),
+                ('\\x1b', '\033'),
+                ('#$#', '#')
+            ]
+            line = res.decode(errors='ignore')
+            for old, new in replacements:
+                line = line.replace(old, new)
+            return line
 
-        while not self.list_events['event_stop_listener'].is_set():
-            res = b""
-            res_log = []
-            boot_failure = False
+        def handle_boot_failure(line):
+            if self.test_tags['boot_failure'] in line:
+                print(cons.RED_TEXT + line + "Boot failed." + cons.RESET_COLOR)
+                cons.TEST_RESULTS = line
+                self.clear_timeout()
+                self.list_events['event_stop_listener'].set()
+                return True
+            return False
 
-            while not (res.endswith(b"\r\n") and (self.test_tags['end']).encode('utf-8') in res):
-                res = ser_port.readline()
-                new_line = res.decode(errors='ignore')
-                for old, new in replacements:
-                    new_line = new_line.replace(old, new)
-                res_log.append(new_line)
-
-                if self.test_tags['boot_failure'] in new_line:
-                    print(cons.RED_TEXT +
-                          new_line + "Boot failed." +
-                          cons.RESET_COLOR)
-                    self.list_events['event_stop_listener'].set()
-                    cons.TEST_RESULTS = new_line
+        def handle_command(line):
+            if self.test_tags['c'] in line:
+                command = line.split()[0] + " " + line.split()[1]
+                if command in self.logger_commands:
+                    self.logger_commands[command](line)
+                else:
+                    cons.TEST_RESULTS = line
                     self.clear_timeout()
-                    boot_failure = True
 
-                if self.test_tags['c'] in new_line:
-                    command = new_line.split()[0] + " " + new_line.split()[1]
-                    if command in self.logger_commands:
-                        self.logger_commands[command](new_line)
-                    else:
-                        cons.TEST_RESULTS = new_line
-                        self.clear_timeout()
-
-                if self.list_events['event_stop_listener'].is_set():
-                    break
-
+        def handle_test_completion(res_log, boot_failure):
             results = {}
             self.clear_timeout()
             if not boot_failure:
                 for line in reversed(res_log):
                     if self.test_tags['c'] in line and "END" not in line:
                         cons.TEST_RESULTS = line
-                        # parse results from something like [TESTF-C] TOTAL#4 SUCCESS#3 FAIL#1
                         for item in line.split():
                             if '#' in item:
                                 key, value = item.split('#', 1)
@@ -227,8 +218,28 @@ class TestLogger:
                         break
                 else:
                     results["FAIL"] = 1
-                
+
                 cons.TEST_RESULTS = results
+
+        while not self.list_events['event_stop_listener'].is_set():
+            res = b""
+            res_log = []
+            boot_failure = False
+
+            while not (res.endswith(b"\r\n") and (self.test_tags['end']).encode('utf-8') in res):
+                res = ser_port.readline()
+                new_line = decode_and_replace(res)
+                res_log.append(new_line)
+
+                if handle_boot_failure(new_line):
+                    boot_failure = True
+
+                handle_command(new_line)
+
+                if self.list_events['event_stop_listener'].is_set():
+                    break
+
+            handle_test_completion(res_log, boot_failure)
 
             self.log_level[echo](res_log)
 
