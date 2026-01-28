@@ -1,0 +1,11 @@
+boot:
+    - list_tests: ""
+    - list_suites: "BOOT_CHECK"
+
+irq:
+    - list_tests: ""
+    - list_suites: "IRQ_CHECK"
+
+performance:
+    - list_tests: "IRQ_LATENCY"
+    - list_suites: "IRQ_CHECK"
