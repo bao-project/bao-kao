@@ -7,7 +7,7 @@ import subprocess
 
 
 class baremetal:
-    def __init__(self, wrkdir, list_tests, list_suites, tests_srcs, bao_tests_path):
+    def __init__(self, wrkdir, list_tests, list_suites, tests_srcs, bao_tests_path, bin_name, build_flags):
         self.wrkdir = wrkdir
         self.guest_name = "baremetal"
 
@@ -18,6 +18,8 @@ class baremetal:
 
         self.list_tests = list_tests
         self.list_suites = list_suites
+        self.build_flags = build_flags
+        self.bin_name = bin_name
 
         os.makedirs(self.srcs_dir, exist_ok=True)
         os.makedirs(self.bin_dir, exist_ok=True)
@@ -92,6 +94,8 @@ class baremetal:
         if arch == "aarch64" and irq_flags:
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
+        
+        make_cmd.append(self.build_flags)
 
         self.run_cmd(make_cmd, cwd=self.srcs_dir)
 
@@ -100,10 +104,10 @@ class baremetal:
         os.makedirs(out_bin, exist_ok=True)
 
         built_dir = os.path.join(self.srcs_dir, "build", platform)
-        shutil.copy(os.path.join(built_dir, "baremetal.bin"),
-                    os.path.join(out_bin, f"{self.guest_name}.bin"))
-        shutil.copy(os.path.join(built_dir, "baremetal.elf"),
-                    os.path.join(out_bin, f"{self.guest_name}.elf"))
+        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.bin"),
+                    os.path.join(out_bin, f"{self.bin_name}.bin"))
+        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.elf"),
+                    os.path.join(out_bin, f"{self.bin_name}.elf"))
 
         print(f"[INFO] Built baremetal guest stored at {out_bin}")
-        return os.path.join(out_bin, f"{self.guest_name}.bin")
+        return os.path.join(out_bin, f"{self.bin_name}.bin")

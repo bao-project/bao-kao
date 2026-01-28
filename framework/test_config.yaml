@@ -1,11 +1,25 @@
-boot:
-    - list_tests: ""
-    - list_suites: "BOOT_CHECK"
+tests:
+    boot:
+        - list_tests: ""
+        - list_suites: "BOOT_CHECK"
 
-irq:
-    - list_tests: ""
-    - list_suites: "IRQ_CHECK"
+    irq:
+        - list_tests: ""
+        - list_suites: "IRQ_CHECK"
 
-performance:
-    - list_tests: "IRQ_LATENCY"
-    - list_suites: "IRQ_CHECK"
+    performance:
+        - list_tests: "IRQ_LATENCY"
+        - list_suites: "IRQ_CHECK"
+
+setups:
+    baremetal:
+        - baremetal:
+            - flags:
+
+    benchmark:
+        - baremetal_benchmark:
+            - guest_name: baremetal_sender
+            - flags: "MEMBASE=0x40000000 MEMSIZE=0x4000000"
+        - baremetal_benchmark:
+            - guest_name: baremetal_receiver
+            - flags: "MEMBASE=0x80000000 MEMSIZE=0x4000000"

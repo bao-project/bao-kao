@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Bao Project and Contributors. All rights reserved.
+
+import os
+import urllib.request
+import tarfile
+import shutil
+import subprocess
+
+class arm_none_eabi:
+    def __init__(self, toolchain_dir, host_platform="x86_64"):
+        self.toolchain_version = "14.2.rel1"
+        self.toolchain_dir = toolchain_dir
+        self.host_platform = host_platform
+
+        tarball_name = f"arm-gnu-toolchain-{self.toolchain_version}-{self.host_platform}-arm-none-eabi.tar.xz"
+        self.download_url = f"https://developer.arm.com/-/media/Files/downloads/gnu/{self.toolchain_version}/binrel/{tarball_name}"
+        os.makedirs(os.path.dirname(self.toolchain_dir), exist_ok=True)
+        
+
+    def fetch_sources(self):
+        """Download the toolchain tarball if not present."""
+        need_extract = False
+        if not os.path.exists(self.toolchain_dir):
+            print(f"[INFO] Downloading {self.download_url}...")
+            urllib.request.urlretrieve(self.download_url, self.toolchain_dir)
+            input(f"[INFO] Download complete. Press Enter to continue...")
+            print(f"[INFO] Downloaded to {self.toolchain_dir}")
+            need_extract = True
+        else:
+            print(f"[INFO] Toolchain already exists: {self.toolchain_dir}")
+        return self.toolchain_dir, need_extract 
+    
+    def extract(self, tarball_path):
+        """Extract the tarball into self.toolchain_dir"""
+        extract_parent = os.path.dirname(self.toolchain_dir)
+
+        print(f"[INFO] Extracting {tarball_path}...")
+        with tarfile.open(tarball_path, "r:xz") as tar:
+            tar.extractall(path=extract_parent)
+            top_dirs = [m.name.split("/")[0] for m in tar.getmembers() if m.isdir()]
+            top_level_dir = os.path.commonprefix(top_dirs)
+
+        extracted_folder = os.path.join(extract_parent, top_level_dir)
+
+        if os.path.exists(self.toolchain_dir):
+            if os.path.isfile(self.toolchain_dir):
+                os.remove(self.toolchain_dir)
+            else:
+                shutil.rmtree(self.toolchain_dir)
+        os.rename(extracted_folder, self.toolchain_dir)
+        print(f"[INFO] Extracted to {self.toolchain_dir}")
+
+    def install(self):
+        """Download, extract, and verify the toolchain."""
+
+        path = shutil.which("arm-none-eabi-gcc")
+        is_installed = False
+        if path:
+            result = subprocess.run([path, "--version"], stdout=subprocess.PIPE, text=True)
+            version_line = result.stdout.splitlines()[0]
+            if self.toolchain_version in version_line:
+                is_installed = True
+        if not is_installed:
+            toolchain_dir, need_extract = self.fetch_sources()
+            if need_extract:
+                self.extract(toolchain_dir)
+            toolchain_dir += "/bin/arm-none-eabi-"
+            return toolchain_dir
+        else:
+            print(f"[INFO] arm-none-eabi-gcc already installed and up to date.")
+            return "arm-none-eabi-"
+

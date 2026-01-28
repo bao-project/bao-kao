@@ -15,6 +15,7 @@ class test_framework:
         self.tests_srcs = os.path.abspath(os.path.join(cur_dir, "../src/tests"))
         self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../../bao-tests"))
         self.bao_hypervisor_dir = os.path.abspath(os.path.join(cur_dir, "../../../"))
+        self.disable_logger = False
 
     def build_guests(self, platform):
 
@@ -22,8 +23,8 @@ class test_framework:
             print("[INFO] Building guest:", guest)
 
             guest_class = dict_guests.get(guest)
-            list_tests = self.test_config['guests'][guest].get('list_tests', "")
-            list_suites = self.test_config['guests'][guest].get('list_suites', "")
+            list_tests = self.test_config["tests"]
+            list_suites = self.test_config["suites"]
 
             # get absolute path of current directory
             cur_dir = os.getcwd()
@@ -149,6 +150,10 @@ class test_framework:
                     help="Target setup (e.g., baremetal freertos)",
                     default=" ")
         
+        parser.add_argument("--no_logger", action="store_true",
+                    help="Disables logging functionality",
+                    default=False)
+        
         # either "config" or "test" and "setup" must be provided
         args = parser.parse_args()
         
@@ -171,23 +176,25 @@ class test_framework:
 
         list_tests = test_config.get(args.test, [{}])[0].get("list_tests", "")
         list_suites = test_config.get(args.test, [{}])[1].get("list_suites", "")
+    
+        list_setups = test_config.get("setups", {})
+        list_guests = list_setups.get(args.setup, {})
 
-        guests = {
-            args.setup : {
-                'list_tests': list_tests,
-                'list_suites': list_suites
-            }
-        }
 
         self.test_config = {
             'log_level': int(args.log_level),
             'echo': args.echo,
             'platform': args.platform,
             'irq_flags': irq_flags,
-            'guests': guests,
+            'guests': list_guests,
+            'tests': list_tests,
+            'suites': list_suites,
             'bao_config': os.path.abspath(os.path.join(cur_dir, f"tests_configurations/setups/{args.setup}")),
             'setup': args.setup
         }
+
+        # if args.no_logger:
+        #     self.disable_logger = True
 
 
     def launch_test(self, bao_bin, irq_flags, setup, echo):
@@ -197,6 +204,26 @@ class test_framework:
             bao_bin, irq_flags, setup
         )
 
+        # if tf.disable_logger:
+        #     print("[INFO] Logger functionality is disabled.")
+        #     return
+        
+        # else:
+        #     logger_inst.connect_to_platform_port(serial_ports, echo)
+
+        #     parent = psutil.Process(proc.pid)
+        #     children = parent.children(recursive=True)
+        #     for child in children:
+        #         try:
+        #             child.terminate()
+        #             child.wait()
+        #         except psutil.NoSuchProcess:
+        #             pass
+        #     try:
+        #         parent.terminate()
+        #         parent.wait()
+        #     except psutil.NoSuchProcess:
+        #         pass
         logger_inst.connect_to_platform_port(serial_ports, echo)
 
         parent = psutil.Process(proc.pid)
@@ -227,6 +254,7 @@ dict_platforms = {
 
 dict_guests = {
     "baremetal" : baremetal,
+    "baremetal_benchmark" : baremetal_benchmark
 }
 
 # main

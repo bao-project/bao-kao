@@ -35,12 +35,14 @@ class qemu_aarch64_virt:
     def setup_platform(self):
         path = shutil.which("qemu-system-aarch64")
         is_installed = False
-        if path:
-            result = subprocess.run(["qemu-system-aarch64", "--version"], stdout=subprocess.PIPE, text=True)
-            version_line = result.stdout.splitlines()[0]
-            version_str = version_line.split()[3]
-            if version_str == self.qemu_version:
-                is_installed = True
+        if(path is not None):
+            is_installed = True
+        # if path:
+        #     result = subprocess.run(["qemu-system-aarch64", "--version"], stdout=subprocess.PIPE, text=True)
+        #     version_line = result.stdout.splitlines()[0]
+        #     version_str = version_line.split()[3]
+        #     if version_str == self.qemu_version:
+        #         is_installed = True
         
         if not is_installed:
             print("[INFO] QEMU not found or wrong version. Installing...")
@@ -121,7 +123,6 @@ class qemu_aarch64_virt:
         """
         diff = list(set(ports_end) - set(ports_init))
         return diff
-
 
     def launch_test(self, bao_img, interrupt_flags, guest_os="baremetal"):
         if interrupt_flags:
