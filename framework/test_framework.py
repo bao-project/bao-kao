@@ -22,7 +22,20 @@ class test_framework:
         for guest in self.test_config['guests']:
             print("[INFO] Building guest:", guest)
 
-            guest_class = dict_guests.get(guest)
+
+            guest_type = list(guest.keys())[0]
+
+
+            print("[INFO] Building guest_type:", guest[guest_type])
+            print("[INFO] Building bin_name:", guest[guest_type][0]['bin_name'])
+            print("[INFO] Building flags:", guest[guest_type][1]['flags'])
+            
+
+            bin_name=guest[guest_type][0]['bin_name']
+            flags=guest[guest_type][1]['flags']
+
+            guest_class = dict_guests.get(guest_type)
+            
             list_tests = self.test_config["tests"]
             list_suites = self.test_config["suites"]
 
@@ -38,7 +51,9 @@ class test_framework:
             guest_instance = guest_class(
                 wrkdir, list_tests, list_suites,
                 tests_srcs=tests_srcs_dir,
-                bao_tests_path=bao_tests_dir
+                bao_tests_path=bao_tests_dir,
+                bin_name = bin_name,
+                build_flags = flags
             )
 
             guest_instance.build(
@@ -174,8 +189,10 @@ class test_framework:
         with(open(config_file, "r")) as f:
             test_config = yaml.safe_load(f)
 
-        list_tests = test_config.get(args.test, [{}])[0].get("list_tests", "")
-        list_suites = test_config.get(args.test, [{}])[1].get("list_suites", "")
+        tests_lists = test_config.get("tests", {})
+
+        list_tests = tests_lists.get(args.test, [{}])[0].get("list_tests", "")
+        list_suites = tests_lists.get(args.test, [{}])[1].get("list_suites", "")
     
         list_setups = test_config.get("setups", {})
         list_guests = list_setups.get(args.setup, {})
@@ -204,6 +221,10 @@ class test_framework:
             bao_bin, irq_flags, setup
         )
 
+        # Safety valve: platform launch not fully implemented (e.g. tc4dx)
+        if not serial_ports:
+            print("[INFO] No serial ports returned by platform. Skipping logger and cleanup.")
+            return
         # if tf.disable_logger:
         #     print("[INFO] Logger functionality is disabled.")
         #     return
@@ -243,12 +264,17 @@ class test_framework:
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
 from qemu_aarch64_virt import qemu_aarch64_virt
+from tc4dx import tc4dx
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
 from baremetal import baremetal
+from baremetal_benchmark import baremetal_benchmark
+from s32 import s32
 
 dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
+    "tc4dx": tc4dx,
+    "s32": s32,
     # "qemu-riscv64-virt": qemu_riscv64_virt
 }
 

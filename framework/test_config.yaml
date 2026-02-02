@@ -14,12 +14,10 @@ tests:
 setups:
     baremetal:
         - baremetal:
-            - flags:
+            - bin_name: "baremetal"
+            - flags: " "
 
     benchmark:
         - baremetal_benchmark:
-            - guest_name: baremetal_sender
-            - flags: "MEMBASE=0x40000000 MEMSIZE=0x4000000"
-        - baremetal_benchmark:
-            - guest_name: baremetal_receiver
-            - flags: "MEMBASE=0x80000000 MEMSIZE=0x4000000"
+            - bin_name: baremetal_sender
+            - flags: ""
