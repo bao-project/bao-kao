@@ -2,3 +2,4 @@
 bao_test.c
 testf_entry.c
 framework/output/*
+framework/wrkdir
