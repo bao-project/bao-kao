@@ -270,11 +270,13 @@ sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
 from baremetal import baremetal
 from baremetal_benchmark import baremetal_benchmark
 from s32 import s32
+from rh850 import rh850
 
 dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
     "tc4dx": tc4dx,
     "s32": s32,
+    "rh850" : rh850,
     # "qemu-riscv64-virt": qemu_riscv64_virt
 }
 

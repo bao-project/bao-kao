@@ -12,20 +12,18 @@ import tempfile
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "../firmware")))
-from atf import atf
-from uboot import uboot
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "../toolchains")))
-from arm_none_eabi import arm_none_eabi
+from v850_elf import v850_elf
 
-class s32:
+class rh850:
     def __init__(self, wrkdir):
         self.firmware_dir = f"{wrkdir}/platforms/firmware"
         # self.qemu_version = "7.2.0"
         # self.git_repo = "https://git.qemu.org/git/qemu.git"
         self.firmware = {}
-        self.toolchain = f"{wrkdir}/toolchains/arm_none_eabi"
-        self.architecture = "aarch32"
+        self.toolchain = f"{wrkdir}/toolchains/v850_elf"
+        self.architecture = "rh850"
 
         
         if not os.path.exists(self.firmware_dir):
@@ -36,7 +34,7 @@ class s32:
             
     def build_toolchain(self):
         host_architecture = subprocess.check_output(["uname", "-m"]).decode().strip()
-        toolchain_instance = arm_none_eabi(self.toolchain, host_architecture)
+        toolchain_instance = v850_elf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
 
     def build_firmware(self, interrupt_flags=None):
