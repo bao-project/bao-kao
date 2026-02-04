@@ -21,14 +21,18 @@ class baremetal_benchmark:
         self.build_flags = build_flags
         self.bin_name = bin_name
 
+        self.use_local_repo = True  # ← flip to True for local testing
+        self.local_repo_path = "/home/mafs/MISRA/bao-baremetal-test"
+
         os.makedirs(self.srcs_dir, exist_ok=True)
         os.makedirs(self.bin_dir, exist_ok=True)
 
         self.git_url = "https://github.com/miguelafsilva5/bao-baremetal-bench.git"
         self.git_rev = "85b9f277b4944931bcdeb447565a755c22323d10"
 
-    def run_cmd(self, cmd, cwd=None):
-        p = subprocess.run(cmd, cwd=cwd)
+    def run_cmd(self, cmd, cwd=None, env=None):
+        print(f"COMMAND:", cmd)
+        p = subprocess.run(cmd, cwd=cwd, env=env)
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
@@ -36,8 +40,18 @@ class baremetal_benchmark:
         """Clone baremetal guest repo if not already present."""
         if not os.path.exists(os.path.join(self.srcs_dir, ".git")):
             print("[INFO] Fetching baremetal guest sources...")
-            self.run_cmd(["git", "clone", "--recursive", self.git_url, self.srcs_dir])
-            self.run_cmd(["git", "checkout", self.git_rev], cwd=self.srcs_dir)
+
+            if self.use_local_repo:
+                print(f"[INFO] Using local repo: {self.local_repo_path}")
+                shutil.copytree(
+                    self.local_repo_path,
+                    self.srcs_dir,
+                    symlinks=True,
+                    dirs_exist_ok=True,
+                )
+            else:
+                self.run_cmd(["git", "clone", "--recursive", self.git_url, self.srcs_dir])
+                self.run_cmd(["git", "checkout", self.git_rev], cwd=self.srcs_dir)
         else:
             print("[INFO] Guest sources already present.")
         return self.srcs_dir
@@ -92,17 +106,26 @@ class baremetal_benchmark:
         #    gic_version = irq_flags.get("GIC_version", "GICV2")
         #    make_cmd.append(f"GIC_VERSION={gic_version}")
         
+        make_cmd.extend([
+            "BAREMETAL_BENCHMARKS=1",
+            "BENCHMARK=irq-lat",
+        ])
+
+        env = os.environ.copy()
 
         if self.build_flags:
-            make_cmd.append(self.build_flags)
+            for item in self.build_flags.split():
+                k, v = item.split("=", 1)
+                env[k] = v
 
-        self.run_cmd(make_cmd, cwd=self.srcs_dir)
+
+        self.run_cmd(make_cmd, cwd=self.srcs_dir, env=env)
 
         # Install artifacts
         out_bin = self.bin_dir
         os.makedirs(out_bin, exist_ok=True)
 
-        built_dir = os.path.join(self.srcs_dir, "build", platform)
+        built_dir = os.path.join(self.srcs_dir, "build", self.guest_name)
 
         print("[INFO] out_bin ", out_bin)
         print("[INFO] built_dir ", built_dir)

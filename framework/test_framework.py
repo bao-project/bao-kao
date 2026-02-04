@@ -276,7 +276,7 @@ dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
     "tc4dx": tc4dx,
     "s32": s32,
-    "rh850" : rh850,
+    "rh850-u2a16" : rh850,
     # "qemu-riscv64-virt": qemu_riscv64_virt
 }
 
