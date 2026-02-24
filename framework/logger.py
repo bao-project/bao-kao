@@ -32,7 +32,8 @@ class TestLogger:
         self.log_level = {
             'full'  : self.echo_log_full,
             'tf'    : self.echo_log_tf,
-            'none'  : self.echo_log_none
+            'none'  : self.echo_log_none,
+            'benchmark' : self.echo_log_benchmark
         }
 
         self.serial_port = ""
@@ -146,6 +147,50 @@ class TestLogger:
                 print(line, end="")
 
         self.list_events['event_thread_finished'].set()
+
+    def echo_log_benchmark(self, serial_results):
+        """
+        Filter and print serial results within the TF section.
+
+        Args:
+            serial_results (list): A list of lines got from serial communication.
+        Returns:
+            None
+        """
+        self.echo_log_tf(serial_results)
+
+        result_tag = "[SAMPLE]"
+        results = []
+
+        for line in serial_results:
+            if result_tag in line:
+                try:
+                    result = int(line.split(result_tag)[-1].strip())
+                    results.append(result)
+                except ValueError:
+                    continue
+        
+        # print the average of the results
+        if results:
+            average = sum(results) / len(results)
+            max_value = max(results)
+            min_value = min(results)
+            std_dev = (sum((x - average) ** 2 for x in results) / len(results)) ** 0.5
+            variance = std_dev ** 2
+
+            CPU_FREQ = 1.2e9  # 1.2 GHz
+            averas_us = average / CPU_FREQ * 1e6
+            max_us = max_value / CPU_FREQ * 1e6
+            min_us = min_value / CPU_FREQ * 1e6
+            std_dev_us = std_dev / CPU_FREQ * 1e6
+            variance_us = variance / (CPU_FREQ ** 2) * 1e12
+
+            from prettytable import PrettyTable
+            table = PrettyTable()
+            table.field_names = ["Metric", "Average", "Max", "Min", "Std Dev", "Variance"]
+            table.add_row(["Clock Cycles", f"{average:.3f}", f"{max_value:.3f}", f"{min_value:.3f}", f"{std_dev:.3f}", f"{variance:.3f}"])
+            table.add_row(["Execution Time (us)", f"{averas_us:.3f}", f"{max_us:.3f}", f"{min_us:.3f}", f"{std_dev_us:.3f}", f"{variance_us:.3f}"])
+            print(table)
 
     def echo_log_none(self):
         """

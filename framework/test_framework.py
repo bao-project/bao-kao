@@ -7,6 +7,12 @@ import subprocess
 import logger
 import subprocess
 import psutil
+from constants import print_log
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,24 +26,41 @@ class test_framework:
     def build_guests(self, platform):
 
         for guest in self.test_config['guests']:
-            print("[INFO] Building guest:", guest)
+            print_log("INFO", f"Building guest:", tab_level=1)
 
+            def get_platform_build_flags(list_flags, platform_name, guest_name):
+                for flags in list_flags:
+                    if platform_name in flags:
+                        return flags[platform_name]
+                return ""
+                
 
-            guest_type = list(guest.keys())[0]
+            if self.run_type == "benchmark":
+                guest_type = "baremetal_benchmark"
+                guest_name = guest[list(guest.keys())[0]][0]['bin_name']
+                building_flags = get_platform_build_flags(
+                    guest[list(guest.keys())[0]][1]['flags'],
+                    self.test_config['platform'],
+                    guest_name
+                )
+            else:   
+                guest_type = list(guest.keys())[0]
+                guest_name = guest[guest_type][0]['bin_name']
+                building_flags = guest[guest_type][1]['flags']
 
-
-            print("[INFO] Building guest_type:", guest[guest_type])
-            print("[INFO] Building bin_name:", guest[guest_type][0]['bin_name'])
-            print("[INFO] Building flags:", guest[guest_type][1]['flags'])
+            print_log("INFO", f"Building guest_type: {guest_type}", tab_level=2)
+            print_log("INFO", f"Building bin_name: {guest_name}", tab_level=2)
+            print_log("INFO", f"Building flags: {building_flags}", tab_level=2)
             
 
-            bin_name=guest[guest_type][0]['bin_name']
-            flags=guest[guest_type][1]['flags']
+            bin_name=guest_name
+            flags=building_flags
 
             guest_class = dict_guests.get(guest_type)
             
             list_tests = self.test_config["tests"]
             list_suites = self.test_config["suites"]
+            benchmark = self.test_config["benchmark"]
 
             # get absolute path of current directory
             cur_dir = os.getcwd()
@@ -49,7 +72,7 @@ class test_framework:
                 os.path.join(cur_dir, self.bao_tests_dir)
             )
             guest_instance = guest_class(
-                wrkdir, list_tests, list_suites,
+                wrkdir, list_tests, list_suites, benchmark,
                 tests_srcs=tests_srcs_dir,
                 bao_tests_path=bao_tests_dir,
                 bin_name = bin_name,
@@ -64,8 +87,8 @@ class test_framework:
                 )
 
     def run_cmd(self, cmd, cwd=None):
-        print(f"[CMD] {' '.join(cmd)}")
-        p = subprocess.run(cmd, cwd=cwd)
+        # print(f"[CMD] {' '.join(cmd)}")
+        p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
     
@@ -77,10 +100,11 @@ class test_framework:
         # Create an $out-like directory inside bao_hypervisor_dir
         out_dir = os.path.join(bao_srcs_path, "bao_imgs")
 
-        print("[INFO] Setting up Bao hypervisor build environment...")
-        print("[INFO]    bao_srcs_path :", bao_srcs_path)
-        print("[INFO]    wrkdir_abs    :", wrkdir_abs)
-        print("[INFO]    out_dir       :", out_dir)
+        print_log("INFO", "Setting up Bao hypervisor build environment...", tab_level=1)
+        # print("[INFO]    bao_srcs_path :", bao_srcs_path)
+        # print("[INFO]    wrkdir_abs    :", wrkdir_abs)
+        # print("[INFO]    out_dir       :", out_dir)
+        # print("[INFO]    bao_config_path:", bao_config_path)
 
         guests_build_dir = os.path.join(wrkdir_abs, "guests", "build")
         platform_name = self.test_config['platform']
@@ -88,7 +112,7 @@ class test_framework:
         env = os.environ.copy()
         env["ARCH"] = platform.architecture
         env["CROSS_COMPILE"] = f"{platform.toolchain}-"
-
+        
         make_cmd = [
             "make",
             f"PLATFORM={platform_name}",
@@ -101,7 +125,7 @@ class test_framework:
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
 
-        print("[CMD] " + " ".join(make_cmd))
+        # print("[CMD] " + " ".join(make_cmd))
 
         # Run make in the hypervisor source dir (../../../)
         self.run_cmd(make_cmd, cwd=bao_srcs_path)
@@ -110,7 +134,7 @@ class test_framework:
             bao_srcs_path, "bin", platform_name, platform_name, "bao.bin"
         )
 
-        print(f"[INFO] Built Bao hypervisor stored at {bao_bin_path}")
+        print_log("SUCCESS", f"Successfully built Bao hypervisor!", tab_level=1)
         return bao_bin_path
 
     def clean_build_artifacts(self):
@@ -169,6 +193,10 @@ class test_framework:
                     help="Disables logging functionality",
                     default=False)
         
+        parser.add_argument("-benchmark", "--benchmark",
+                    help="Used to define if the test execution is for benchmark purposes, which may impact the logging and reporting behavior of the framework",
+                    default=" ")
+        
         # either "config" or "test" and "setup" must be provided
         args = parser.parse_args()
         
@@ -186,16 +214,50 @@ class test_framework:
                 irq_flags = {'IPIC': args.ipic}
 
         config_file = os.path.abspath(os.path.join(cur_dir, "test_config.yaml"))
-        with(open(config_file, "r")) as f:
-            test_config = yaml.safe_load(f)
 
-        tests_lists = test_config.get("tests", {})
+        def read_config(config_path):
+            with open(config_path, "r") as f:
+                return yaml.safe_load(f)
+        
 
-        list_tests = tests_lists.get(args.test, [{}])[0].get("list_tests", "")
-        list_suites = tests_lists.get(args.test, [{}])[1].get("list_suites", "")
-    
-        list_setups = test_config.get("setups", {})
-        list_guests = list_setups.get(args.setup, {})
+        list_tests = ""
+        list_suites = ""
+        list_guests = {}
+
+        self.run_type = None
+
+        # parse tests file
+        if args.test != " ":
+            self.run_type = "test"
+            config_file = os.path.abspath(os.path.join(cur_dir, "test_config.yaml"))
+            test_config = read_config(config_file)
+            tests_lists = test_config.get("tests", {}).get(args.setup, {})
+            list_tests = tests_lists.get(args.test, [{}])[0].get("list_tests", "")
+            list_suites = tests_lists.get(args.test, [{}])[1].get("list_suites", "")
+
+            list_setups = test_config.get("setups", {}).get("test", {})
+            list_guests = list_setups.get(args.setup, {})
+
+        # parse benchmark file
+        if args.benchmark != " ":
+            self.run_type = "benchmark"
+            config_file = os.path.abspath(os.path.join(cur_dir, "benchmarks_config.yaml"))
+            test_config = read_config(config_file)
+            list_setups = test_config.get("benchmarks", {})
+            for setup in list_setups:
+                if args.benchmark in setup:
+                    list_guests = setup[args.benchmark]
+                    break
+        
+
+        bao_config_path = os.path.abspath(os.path.join(cur_dir, f"tests_configurations"))
+
+        if self.run_type is not None:
+            if self.run_type == "test":
+                bao_config_path = os.path.join(bao_config_path, "tests", args.setup)
+            elif self.run_type == "benchmark":
+                bao_config_path = os.path.join(bao_config_path, "benchmarks", args.benchmark)
+
 
 
         self.test_config = {
@@ -206,13 +268,10 @@ class test_framework:
             'guests': list_guests,
             'tests': list_tests,
             'suites': list_suites,
-            'bao_config': os.path.abspath(os.path.join(cur_dir, f"tests_configurations/setups/{args.setup}")),
-            'setup': args.setup
+            'bao_config': bao_config_path,
+            'setup': args.setup,
+            'benchmark' : args.benchmark
         }
-
-        # if args.no_logger:
-        #     self.disable_logger = True
-
 
     def launch_test(self, bao_bin, irq_flags, setup, echo):
         logger_inst = logger.TestLogger()
@@ -225,26 +284,7 @@ class test_framework:
         if not serial_ports:
             print("[INFO] No serial ports returned by platform. Skipping logger and cleanup.")
             return
-        # if tf.disable_logger:
-        #     print("[INFO] Logger functionality is disabled.")
-        #     return
-        
-        # else:
-        #     logger_inst.connect_to_platform_port(serial_ports, echo)
 
-        #     parent = psutil.Process(proc.pid)
-        #     children = parent.children(recursive=True)
-        #     for child in children:
-        #         try:
-        #             child.terminate()
-        #             child.wait()
-        #         except psutil.NoSuchProcess:
-        #             pass
-        #     try:
-        #         parent.terminate()
-        #         parent.wait()
-        #     except psutil.NoSuchProcess:
-        #         pass
         logger_inst.connect_to_platform_port(serial_ports, echo)
 
         parent = psutil.Process(proc.pid)
@@ -267,8 +307,8 @@ from qemu_aarch64_virt import qemu_aarch64_virt
 from tc4dx import tc4dx
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
-from baremetal import baremetal
-from baremetal_benchmark import baremetal_benchmark
+from baremetal import baremetal_test, baremetal_benchmark
+# from baremetal_benchmark import baremetal_benchmark
 from s32 import s32
 from rh850 import rh850
 
@@ -281,11 +321,10 @@ dict_platforms = {
 }
 
 dict_guests = {
-    "baremetal" : baremetal,
+    "baremetal" : baremetal_test,
     "baremetal_benchmark" : baremetal_benchmark
 }
 
-# main
 if __name__ == "__main__":
     wrkdir = os.getcwd()
     wrkdir += "/wrkdir"
@@ -293,17 +332,24 @@ if __name__ == "__main__":
         os.makedirs(wrkdir)
 
     tf = test_framework(wrkdir)
+    print_log("INFO", f"Parsing test configuration...", tab_level=0)
     tf.parse_args()
+    print_log("SUCCESS", f"Parsed test configuration.", tab_level=0)
 
     interrupt_flags = tf.test_config['irq_flags']
     bao_cfg_path_abs = os.path.abspath(tf.test_config['bao_config'])
 
+    print_log("INFO", f"Setting up platform...", tab_level=0)
     platform_class = dict_platforms.get(tf.test_config['platform'])
     platform = platform_class(wrkdir)
     platform.setup_platform()
+    print_log("INFO", f"Building firmware...", tab_level=1)
     platform.build_firmware(interrupt_flags)
 
+    print_log("INFO", f"Building guests...", tab_level=0)
     tf.build_guests(platform)
+
+    print_log("INFO", f"Building Bao hypervisor...", tab_level=0)
     bao_bin = tf.build_hypervisor(
         wrkdir,
         bao_cfg_path_abs,

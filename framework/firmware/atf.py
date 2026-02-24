@@ -3,6 +3,11 @@
 import os
 import subprocess
 import shutil
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
 
 class atf:
     def __init__(self, firmware_dir):
@@ -28,12 +33,12 @@ class atf:
     
     def fetch_sources(self):
         if not os.path.exists(os.path.join(self.srcs_dir, ".git")):
-            print(f"[INFO] Cloning ATF from {self.git_repo}")
+            print_log("INFO", f"Cloning ATF from {self.git_repo}", tab_level=2)
             self.run_command([
                 "git", "clone", self.git_repo, self.srcs_dir
             ])
 
-        print(f"[INFO] Checking out ATF revision {self.atf_version}")
+        print_log("INFO", f"Checking out ATF revision {self.atf_version}", tab_level=2)
         self.run_command(["git", "fetch", "--all"],
                          cwd=self.srcs_dir)
         self.run_command(["git", "checkout", self.atf_version],
@@ -54,8 +59,8 @@ class atf:
             # f"ARCH=aarch64"
         ]
 
-        print(f"[INFO] Building ATF for {platform}...")
-        print("[CMD] " + " ".join(build_cmd))
+        print_log("INFO", f"Building ATF for {platform}...", tab_level=2)
+        # print_log("INFO", "[CMD] " + " ".join(build_cmd), tab_level=2)
         self.run_command(build_cmd, cwd=self.srcs_dir)
 
     def install(self, platform, out_dir):
@@ -75,14 +80,16 @@ class atf:
             flash_dst = os.path.join(target_dir, "flash.bin")
 
             # dd if=bl1.bin of=flash.bin
+            # disable verbose output of dd and handle errors
             subprocess.run(
-                ["dd", f"if={bl1_src}", f"of={flash_dst}"], check=True
+                ["dd", f"if={bl1_src}", f"of={flash_dst}"], check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
 
             subprocess.run(
                 [   "dd", f"if={fip_src}", f"of={flash_dst}",
                     "seek=64", "bs=4096", "conv=notrunc",
-                ], check=True
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
 
         elif platform in ["fvp-a", "fvp-a-aarch32"]:
@@ -92,4 +99,4 @@ class atf:
         else:
             raise ValueError(f"Unsupported platform for install: {platform}")
 
-        print(f"[INFO] ATF installed to {target_dir}")
+        print_log("SUCCESS", f"ATF installed", tab_level=2)

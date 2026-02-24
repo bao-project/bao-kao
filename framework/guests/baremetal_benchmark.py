@@ -7,7 +7,7 @@ import subprocess
 
 
 class baremetal_benchmark:
-    def __init__(self, wrkdir, list_tests, list_suites, tests_srcs, bao_tests_path, bin_name, build_flags):
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, bao_tests_path, bin_name, build_flags):
         self.wrkdir = wrkdir
         self.guest_name = "baremetal"
 
@@ -20,9 +20,10 @@ class baremetal_benchmark:
         self.list_suites = list_suites
         self.build_flags = build_flags
         self.bin_name = bin_name
+        self.benchmark = benchmark
 
         self.use_local_repo = True  # ← flip to True for local testing
-        self.local_repo_path = "/home/mafs/MISRA/bao-baremetal-test"
+        self.local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_benchmarks/bao-baremetal-test"
 
         os.makedirs(self.srcs_dir, exist_ok=True)
         os.makedirs(self.bin_dir, exist_ok=True)
@@ -59,32 +60,25 @@ class baremetal_benchmark:
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
 
-        tests_srcs_abs = os.path.abspath(self.tests_srcs)
-        bao_tests_abs = os.path.abspath(self.bao_tests_path)
+        # tests_srcs_abs = os.path.abspath(self.tests_srcs)
+        # bao_tests_abs = os.path.abspath(self.bao_tests_path)
 
 
-        tests_root = os.path.join(self.srcs_dir, "tests")
-        tests_src_dst = tests_root
-        tests_baotests_dst = os.path.join(tests_root, "bao-tests")
+        # tests_root = os.path.join(self.srcs_dir, "tests")
+        # tests_src_dst = tests_root
+        # tests_baotests_dst = os.path.join(tests_root, "bao-tests")
 
 
-        if os.path.exists(tests_root):
-            shutil.rmtree(tests_root)
-        os.makedirs(tests_src_dst, exist_ok=True)
-        os.makedirs(os.path.join(tests_baotests_dst, "src"), exist_ok=True)
+        # if os.path.exists(tests_root):
+        #     shutil.rmtree(tests_root)
+        # os.makedirs(tests_src_dst, exist_ok=True)
+        # os.makedirs(os.path.join(tests_baotests_dst, "src"), exist_ok=True)
 
-        # Copy external tests into tests/
-        shutil.copytree(tests_srcs_abs, tests_src_dst, dirs_exist_ok=True)
-        bao_tests_src_dir = os.path.join(bao_tests_abs, "src")
-        shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
+        # # Copy external tests into tests/
+        # shutil.copytree(tests_srcs_abs, tests_src_dst, dirs_exist_ok=True)
+        # bao_tests_src_dir = os.path.join(bao_tests_abs, "src")
+        # shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
-        #print("[INFO] Running codegen.py ...")
-        #codegen_dir = os.path.join(bao_tests_abs, "framework")
-        #generated_output = os.path.join(tests_baotests_dst, "src", "testf_entry.c")
-        #self.run_cmd(
-        #    ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],
-        #    cwd=codegen_dir,
-        #)
 
         # Build baremetal guest
         print("[INFO] Guest repo name/bin_name still needs to be changed!")
@@ -93,23 +87,16 @@ class baremetal_benchmark:
             "make",
             f"PLATFORM={platform}",
             f"CROSS_COMPILE={toolchain}",
+            "BAREMETAL_BENCHMARKS=1",
+            f"BENCHMARK={self.benchmark}",
+            f"GUEST={self.bin_name}",
         ]
 
-        #if self.list_suites:
-        #    make_cmd.append(f'SUITES="{self.list_suites}"')
-        #if self.list_tests:
-        #    make_cmd.append(f'TESTS="{self.list_tests}"')
-        #if platform in ["fvp-a", "fvp-r"]:
-        #    make_cmd.append("BAREMETAL_PARAMS=MEM_BASE=0x10000000")
-
-        #if arch == "aarch64" and irq_flags:
-        #    gic_version = irq_flags.get("GIC_version", "GICV2")
-        #    make_cmd.append(f"GIC_VERSION={gic_version}")
-        
-        make_cmd.extend([
-            "BAREMETAL_BENCHMARKS=1",
-            "BENCHMARK=irq-lat",
-        ])
+        # make_cmd.extend([
+        #     "BAREMETAL_BENCHMARKS=1",
+        #     f"BENCHMARK={self.benchmark}",
+        #     f"GUEST={self.bin_name}",
+        # ])
 
         env = os.environ.copy()
 

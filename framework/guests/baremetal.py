@@ -4,10 +4,15 @@
 import os
 import shutil
 import subprocess
+import sys
 
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
 
 class baremetal:
-    def __init__(self, wrkdir, list_tests, list_suites, tests_srcs, bao_tests_path, bin_name, build_flags):
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
+                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
         self.wrkdir = wrkdir
         self.guest_name = "baremetal"
 
@@ -20,27 +25,53 @@ class baremetal:
         self.list_suites = list_suites
         self.build_flags = build_flags
         self.bin_name = bin_name
+        self.benchmark = benchmark
+
+        if local_repo_path:
+            self.use_local_repo = True
+            self.local_repo_path = local_repo_path
+        else:
+            self.use_local_repo = False
 
         os.makedirs(self.srcs_dir, exist_ok=True)
         os.makedirs(self.bin_dir, exist_ok=True)
 
-        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "d32ac417fc7057f1ff510d48a35fb8ec0cde79cd"
-
-    def run_cmd(self, cmd, cwd=None):
-        p = subprocess.run(cmd, cwd=cwd)
+    def run_cmd(self, cmd, cwd=None, env=None):
+        p = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
     def fetch_sources(self):
         """Clone baremetal guest repo if not already present."""
         if not os.path.exists(os.path.join(self.srcs_dir, ".git")):
-            print("[INFO] Fetching baremetal guest sources...")
-            self.run_cmd(["git", "clone", "--recursive", self.git_url, self.srcs_dir])
-            self.run_cmd(["git", "checkout", self.git_rev], cwd=self.srcs_dir)
+            print_log("INFO", "Fetching baremetal guest sources...", tab_level=2)
+
+            if self.use_local_repo:
+                print_log("INFO", f"Using local repo: {self.local_repo_path}", tab_level=2)
+                shutil.copytree(
+                    self.local_repo_path,
+                    self.srcs_dir,
+                    symlinks=True,
+                    dirs_exist_ok=True,
+                )
+            else:
+                self.run_cmd(["git", "clone", "--recursive", self.git_url, self.srcs_dir])
+                self.run_cmd(["git", "checkout", self.git_rev], cwd=self.srcs_dir)
         else:
-            print("[INFO] Guest sources already present.")
+            print_log("INFO", f"Guest sources already present.", tab_level=2)
         return self.srcs_dir
+
+
+
+class baremetal_test(baremetal):
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
+                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
+        
+        super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
+                         bao_tests_path, bin_name, build_flags, local_repo_path)
+
+        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
+        self.git_rev = "d32ac417fc7057f1ff510d48a35fb8ec0cde79cd"
 
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
@@ -48,23 +79,20 @@ class baremetal:
         tests_srcs_abs = os.path.abspath(self.tests_srcs)
         bao_tests_abs = os.path.abspath(self.bao_tests_path)
 
-
         tests_root = os.path.join(self.srcs_dir, "tests")
         tests_src_dst = tests_root
         tests_baotests_dst = os.path.join(tests_root, "bao-tests")
-
 
         if os.path.exists(tests_root):
             shutil.rmtree(tests_root)
         os.makedirs(tests_src_dst, exist_ok=True)
         os.makedirs(os.path.join(tests_baotests_dst, "src"), exist_ok=True)
 
-        # Copy external tests into tests/
         shutil.copytree(tests_srcs_abs, tests_src_dst, dirs_exist_ok=True)
         bao_tests_src_dir = os.path.join(bao_tests_abs, "src")
         shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
-        print("[INFO] Running codegen.py ...")
+        print_log("INFO", "Running codegen.py ...", tab_level=1)
         codegen_dir = os.path.join(bao_tests_abs, "framework")
         generated_output = os.path.join(tests_baotests_dst, "src", "testf_entry.c")
         self.run_cmd(
@@ -73,7 +101,7 @@ class baremetal:
         )
 
         # Build baremetal guest
-        print("[INFO] Building baremetal guest...")
+        print_log("INFO", "Building baremetal guest...", tab_level=1)
         make_cmd = [
             "make",
             f"PLATFORM={platform}",
@@ -109,5 +137,56 @@ class baremetal:
         shutil.copy(os.path.join(built_dir, f"{self.guest_name}.elf"),
                     os.path.join(out_bin, f"{self.bin_name}.elf"))
 
-        print(f"[INFO] Built baremetal guest stored at {out_bin}")
+        print_log("SUCCESS", f"Built baremetal guest stored at {out_bin}", tab_level=1)
         return os.path.join(out_bin, f"{self.bin_name}.bin")
+
+
+class baremetal_benchmark(baremetal):
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs,
+                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
+        
+        super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
+                         bao_tests_path, bin_name, build_flags, local_repo_path)
+        
+        self.git_url = "https://github.com/miguelafsilva5/bao-baremetal-bench.git"
+        self.git_rev = "85b9f277b4944931bcdeb447565a755c22323d10"
+
+
+    def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
+        self.fetch_sources()
+
+        # Build baremetal guest
+        # print_log("INFO", "Building baremetal-benchmark guest...", tab_level=1)
+        make_cmd = [
+            "make",
+            f"PLATFORM={platform}",
+            f"CROSS_COMPILE={toolchain}",
+            "BAREMETAL_BENCHMARKS=1",
+            f"BENCHMARK={self.benchmark}",
+            f"GUEST={self.bin_name}",
+        ]
+
+        env = os.environ.copy()
+
+        if self.build_flags:
+            for item in self.build_flags.split():
+                k, v = item.split("=", 1)
+                env[k] = v
+
+
+        self.run_cmd(make_cmd, cwd=self.srcs_dir, env=env)
+
+        # Install artifacts
+        out_bin = self.bin_dir
+        os.makedirs(out_bin, exist_ok=True)
+
+        built_dir = os.path.join(self.srcs_dir, "build", self.guest_name)
+
+        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.bin"),
+                    os.path.join(out_bin, f"{self.bin_name}.bin"))
+        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.elf"),
+                    os.path.join(out_bin, f"{self.bin_name}.elf"))
+
+        print_log("SUCCESS", f"Successfully built baremetal benchmark guest!", tab_level=2)
+        return os.path.join(out_bin, f"{self.bin_name}.bin")
+

@@ -6,6 +6,11 @@ import subprocess
 import shutil
 import urllib.request
 import tarfile
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
 
 class uboot:
     def __init__(self, firmware_dir):
@@ -33,12 +38,12 @@ class uboot:
 
     def fetch_sources(self):
         if not os.listdir(self.src_dir):
-            print(f"[INFO] Cloning U-Boot {self.uboot_version}...")
+            print_log("INFO", f"Cloning U-Boot {self.uboot_version}...", tab_level=2)
             self.run_command([
                 "git", "clone", "--branch", f"v{self.uboot_version}", self.git_repo, self.src_dir
             ])
         else:
-            print(f"[INFO] U-Boot source already exists in {self.src_dir}")
+            print_log("INFO", f"U-Boot source already exists", tab_level=2)
 
     def build(self, platform, toolchain):
         if platform not in self.defconfig_map:
@@ -50,7 +55,7 @@ class uboot:
 
         self.fetch_sources()
 
-        print(f"[INFO] Applying defconfig for platform {platform}: {defconfig}")
+        print_log("INFO", f"Applying defconfig for platform {platform}: {defconfig}", tab_level=2)
         self.run_command(["make", defconfig], cwd=self.src_dir, env=env)
 
         # Append required configs to .config
@@ -61,10 +66,10 @@ class uboot:
             f.write("CONFIG_BOOTDELAY=0\n")
             f.write("CONFIG_BOOTCOMMAND=\"go 0x50000000\"\n")
 
-        print("[INFO] Building U-Boot...")
+        print_log("INFO", f"Building U-Boot for platform {platform}...", tab_level=2)
         self.run_command(["make", f"-j{os.cpu_count()}"], cwd=self.src_dir, env=env)
 
         # Install phase: copy u-boot.bin to bin directory
-        print(f"[INFO] U-Boot built")
+        print_log("SUCCESS", f"U-Boot built successfully for {platform}.", tab_level=2)
         uboot_bin = os.path.join(self.src_dir, "u-boot.bin")
         return uboot_bin
