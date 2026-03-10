@@ -6,6 +6,11 @@ import urllib.request
 import tarfile
 import shutil
 import subprocess
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
 
 class arm_none_eabi:
     def __init__(self, toolchain_dir, host_platform="x86_64"):
@@ -22,20 +27,20 @@ class arm_none_eabi:
         """Download the toolchain tarball if not present."""
         need_extract = False
         if not os.path.exists(self.toolchain_dir):
-            print(f"[INFO] Downloading {self.download_url}...")
+            print_log("INFO", f"Downloading {self.download_url}...", tab_level=3)
             urllib.request.urlretrieve(self.download_url, self.toolchain_dir)
             input(f"[INFO] Download complete. Press Enter to continue...")
-            print(f"[INFO] Downloaded to {self.toolchain_dir}")
+            print_log("INFO", f"Downloaded to {self.toolchain_dir}", tab_level=3)
             need_extract = True
         else:
-            print(f"[INFO] Toolchain already exists: {self.toolchain_dir}")
+            print_log("INFO", f"Toolchain already exists: {self.toolchain_dir}", tab_level=3)
         return self.toolchain_dir, need_extract 
     
     def extract(self, tarball_path):
         """Extract the tarball into self.toolchain_dir"""
         extract_parent = os.path.dirname(self.toolchain_dir)
 
-        print(f"[INFO] Extracting {tarball_path}...")
+        print_log("INFO", f"Extracting {tarball_path}...", tab_level=3)
         with tarfile.open(tarball_path, "r:xz") as tar:
             tar.extractall(path=extract_parent)
             top_dirs = [m.name.split("/")[0] for m in tar.getmembers() if m.isdir()]
@@ -49,7 +54,7 @@ class arm_none_eabi:
             else:
                 shutil.rmtree(self.toolchain_dir)
         os.rename(extracted_folder, self.toolchain_dir)
-        print(f"[INFO] Extracted to {self.toolchain_dir}")
+        print_log("INFO", f"Extracted to {self.toolchain_dir}", tab_level=3)
 
     def install(self):
         """Download, extract, and verify the toolchain."""
@@ -68,6 +73,6 @@ class arm_none_eabi:
             toolchain_dir += "/bin/arm-none-eabi-"
             return toolchain_dir
         else:
-            print(f"[INFO] arm-none-eabi-gcc already installed and up to date.")
+            print_log("INFO", f"arm-none-eabi-gcc already installed and up to date.", tab_level=3)
             return "arm-none-eabi-"
 

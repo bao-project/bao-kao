@@ -15,7 +15,7 @@ from constants import print_log
 
 class aarch64_none_elf:
     def __init__(self, toolchain_dir, host_platform="x86_64"):
-        self.toolchain_version = "13.2.rel1"
+        self.toolchain_version = "14.2.rel1"
         self.toolchain_dir = toolchain_dir
         self.host_platform = host_platform
 

@@ -10,7 +10,8 @@ from constants import print_log
 
 class generic_platform:
     def __init__(self, wrkdir):
-        self.name = "generic_platform"
+        # self.name = "generic_platform"
+        self.is_emulated = False
     
     def run_command(self, command, log_tab_level=0, cwd=None):
         result = subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -19,14 +20,14 @@ class generic_platform:
         if result.returncode != 0:
             print_log("[ERROR]", f"Command '{' '.join(command)}'", tab_level=log_tab_level + 1)
             print_log("[ERROR]", f"failed with error:\n{result.stderr}", tab_level=log_tab_level + 2)
-            # print(f"[ERROR] Command '{' '.join(command)}' failed with error:\n{result.stderr}")
             raise Exception(f"Command '{' '.join(command)}' failed")
         return result.stdout
     
 
 class generic_emulator(generic_platform):
     def __init__(self, wrkdir):
-        self.name = "emulator"
+        # self.name = "emulator"
+        self.is_emulated = True
 
     def check_port_in_use(self, host, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

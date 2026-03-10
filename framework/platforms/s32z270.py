@@ -18,11 +18,12 @@ from uboot import uboot
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "../toolchains")))
 from arm_none_eabi import arm_none_eabi
 
-class s32:
+from generic_platform import generic_platform
+
+class s32z270(generic_platform):
     def __init__(self, wrkdir):
+        super().__init__(wrkdir)
         self.firmware_dir = f"{wrkdir}/platforms/firmware"
-        # self.qemu_version = "7.2.0"
-        # self.git_repo = "https://git.qemu.org/git/qemu.git"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/arm_none_eabi"
         self.architecture = "aarch32"
@@ -40,10 +41,28 @@ class s32:
         self.toolchain = toolchain_instance.install()
 
     def build_firmware(self, interrupt_flags=None):
-        self.build_toolchain()
-
-        if interrupt_flags:
-            gic_version = interrupt_flags.get("GIC_version", "GICV2")
-
-    def launch_test(self, bao_img, interrupt_flags, guest_os="baremetal"):
+        # self.build_toolchain()
         pass
+
+    def get_serial_ports(self):
+        return ["/dev/ttyUSB1"]
+
+    def launch_test(self, run_bin, interrupt_flags, guest_bins = None, guest_os="baremetal", hypervisor=None):
+        launch_script_path = os.path.join(cur_dir, "s32z270/t32.cmm")
+        cmd = ["t32marm", "-s", launch_script_path]
+
+        if hypervisor is not None:
+            run_elf = run_bin.replace(".bin", ".elf")
+            run_img = os.path.join(self.firmware_dir, "run.elf")
+            shutil.copy(run_elf, run_img)
+            cmd.append(run_img)
+
+        list_guests = os.listdir(guest_bins)
+        for guest_bin in list_guests:
+            if guest_bin.endswith(".elf"):
+                cmd.append(os.path.join(guest_bins, guest_bin))
+        super().run_command(cmd, log_tab_level=2)
+        # print("RUNNING COMMAND: " + " ".join(cmd))
+
+        # while(1):
+        #     x=2

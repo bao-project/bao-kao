@@ -38,6 +38,7 @@ class baremetal:
 
     def run_cmd(self, cmd, cwd=None, env=None):
         p = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # p = subprocess.run(cmd, cwd=cwd, env=env, text=True)
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
@@ -55,10 +56,12 @@ class baremetal:
                     dirs_exist_ok=True,
                 )
             else:
-                self.run_cmd(["git", "clone", "--recursive", self.git_url, self.srcs_dir])
+                self.run_cmd(["git", "clone", self.git_url, self.srcs_dir])
                 self.run_cmd(["git", "checkout", self.git_rev], cwd=self.srcs_dir)
+                self.run_cmd(["git", "submodule", "update", "--init", "--recursive"], cwd=self.srcs_dir)
         else:
             print_log("INFO", f"Guest sources already present.", tab_level=2)
+            print("local repo:", self.local_repo_path)
         return self.srcs_dir
 
 
@@ -145,18 +148,18 @@ class baremetal_benchmark(baremetal):
     def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs,
                  bao_tests_path, bin_name, build_flags, local_repo_path=None):
         
+        # local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_benchmarks/bao-baremetal-test"
+        # local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_guest_PR/bao-baremetal-test"
         super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
                          bao_tests_path, bin_name, build_flags, local_repo_path)
         
-        self.git_url = "https://github.com/miguelafsilva5/bao-baremetal-bench.git"
-        self.git_rev = "85b9f277b4944931bcdeb447565a755c22323d10"
+        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
+        self.git_rev = "16cc8a7f84c4d0f4dae7cd6855c2f5dca21fdd7b"
 
 
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
 
-        # Build baremetal guest
-        # print_log("INFO", "Building baremetal-benchmark guest...", tab_level=1)
         make_cmd = [
             "make",
             f"PLATFORM={platform}",

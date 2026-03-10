@@ -149,48 +149,77 @@ class TestLogger:
         self.list_events['event_thread_finished'].set()
 
     def echo_log_benchmark(self, serial_results):
-        """
-        Filter and print serial results within the TF section.
 
-        Args:
-            serial_results (list): A list of lines got from serial communication.
-        Returns:
-            None
-        """
-        self.echo_log_tf(serial_results)
+        if self.list_events['event_thread_finished'].is_set():
+            return
 
-        result_tag = "[SAMPLE]"
-        results = []
+        print(
+            "\n" +
+            "=========================================" +
+            "=========================================\n" +
+            "                            Bao Test Framework\n" +
+            "                                 RESULTS\n" +
+            "=========================================" +
+            "=========================================" +
+            "\n"
+        )
 
-        for line in serial_results:
-            if result_tag in line:
-                try:
-                    result = int(line.split(result_tag)[-1].strip())
-                    results.append(result)
-                except ValueError:
-                    continue
-        
-        # print the average of the results
-        if results:
-            average = sum(results) / len(results)
-            max_value = max(results)
-            min_value = min(results)
-            std_dev = (sum((x - average) ** 2 for x in results) / len(results)) ** 0.5
-            variance = std_dev ** 2
+        RESULT_TAG = "[SAMPLE]"
 
-            CPU_FREQ = 1.2e9  # 1.2 GHz
-            averas_us = average / CPU_FREQ * 1e6
-            max_us = max_value / CPU_FREQ * 1e6
-            min_us = min_value / CPU_FREQ * 1e6
-            std_dev_us = std_dev / CPU_FREQ * 1e6
-            variance_us = variance / (CPU_FREQ ** 2) * 1e12
 
+        def _parse_samples(lines, result_tag=RESULT_TAG):
+            results = []
+            for line in lines:
+                if result_tag in line:
+                    try:
+                        results.append(int(line.split(result_tag)[-1].strip()))
+                    except ValueError:
+                        pass
+            return results
+
+        def _stats(xs):
+            if not xs:
+                return None
+            n = len(xs)
+            avg = sum(xs) / n
+            mx = max(xs)
+            mn = min(xs)
+            var = sum((x - avg) ** 2 for x in xs) / n  # population variance
+            std = var ** 0.5
+            return {"n": n, "avg": avg, "max": mx, "min": mn, "std": std, "var": var}
+
+        # def _to_us(cycles):
+        #     return cycles / CPU_FREQ_HZ * 1e6
+
+        def _print_table(xs):
             from prettytable import PrettyTable
+
+            s = _stats(xs)
+            if s is None:
+                print("No [SAMPLE] results found.")
+                return
+
             table = PrettyTable()
+            table.title = f"Benchmark summary (n={s['n']})"
             table.field_names = ["Metric", "Average", "Max", "Min", "Std Dev", "Variance"]
-            table.add_row(["Clock Cycles", f"{average:.3f}", f"{max_value:.3f}", f"{min_value:.3f}", f"{std_dev:.3f}", f"{variance:.3f}"])
-            table.add_row(["Execution Time (us)", f"{averas_us:.3f}", f"{max_us:.3f}", f"{min_us:.3f}", f"{std_dev_us:.3f}", f"{variance_us:.3f}"])
+
+            table.add_row([
+                "Clock cycles",
+                f"{s['avg']:.3f}", f"{s['max']:.3f}", f"{s['min']:.3f}", f"{s['std']:.3f}", f"{s['var']:.3f}",
+            ])
+
+            # var_us2 = s["var"] / (CPU_FREQ_HZ ** 2) * 1e12  # (us)^2
+            # table.add_row([
+            #     "Execution time (us)",
+            #     f"{_to_us(s['avg']):.3f}", f"{_to_us(s['max']):.3f}", f"{_to_us(s['min']):.3f}",
+            #     f"{_to_us(s['std']):.3f}", f"{var_us2:.3f}",
+            # ])
+
             print(table)
+        
+        _print_table(_parse_samples(serial_results))
+        self.list_events['event_thread_finished'].set()
+
 
     def echo_log_none(self):
         """
@@ -198,7 +227,7 @@ class TestLogger:
         """
         self.list_events['event_thread_finished'].set()
 
-    def connect_to_platform_port(self, ports_list, echo):
+    def connect_to_platform_port(self, ports_list, echo, is_benchmark=False):
         """
         Establishes connections to multiple serial ports concurrently and starts a
         listener thread for each port.
@@ -212,12 +241,15 @@ class TestLogger:
 
         for port in ports_list:
             self.open_connection(port)
-            new_thread = threading.Thread(target=self.listener, args=[self.serial_port, echo])
+            new_thread = threading.Thread(target=self.listener, args=[self.serial_port, echo, is_benchmark])
             threads.append(new_thread)
 
         for thread in threads:
             thread.start()
 
+        return threads
+    
+    def wait_for_finish(self, threads):
         self.list_events['event_thread_finished'].wait()
         self.list_events['event_stop_listener'].set()
 
@@ -225,7 +257,7 @@ class TestLogger:
             thread.join()
 
 
-    def listener(self, ser_port, echo):
+    def listener(self, ser_port, echo, is_benchmark=False):
         """
         Listener to receive test results.
         """
@@ -260,23 +292,24 @@ class TestLogger:
                     self.TEST_RESULTS = line
                     self.clear_timeout()
 
-        def handle_test_completion(res_log, boot_failure):
+        def handle_test_completion(res_log, boot_failure, is_benchmark=False):
             results = {}
             self.clear_timeout()
-            if not boot_failure:
-                for line in reversed(res_log):
-                    if self.test_tags['c'] in line and "END" not in line:
-                        self.TEST_RESULTS = line
-                        for item in line.split():
-                            if '#' in item:
-                                key, value = item.split('#', 1)
-                                results[key] = int(value)
-                        self.TEST_RESULTS = results
-                        break
-                else:
-                    results["FAIL"] = 1
+            if not is_benchmark:
+                if not boot_failure:
+                    for line in reversed(res_log):
+                        if self.test_tags['c'] in line and "END" not in line:
+                            self.TEST_RESULTS = line
+                            for item in line.split():
+                                if '#' in item:
+                                    key, value = item.split('#', 1)
+                                    results[key] = int(value)
+                            self.TEST_RESULTS = results
+                            break
+                    else:
+                        results["FAIL"] = 1
 
-                self.TEST_RESULTS = results
+                    self.TEST_RESULTS = results
 
         while not self.list_events['event_stop_listener'].is_set():
             res = b""
@@ -296,7 +329,7 @@ class TestLogger:
                 if self.list_events['event_stop_listener'].is_set():
                     break
 
-            handle_test_completion(res_log, boot_failure)
+            handle_test_completion(res_log, boot_failure, is_benchmark)
 
             self.log_level[echo](res_log)
 
@@ -308,7 +341,7 @@ class TestLogger:
         Validate connection between test framework and platform
         """
 
-        port_name = '/dev/pts/' + str(port)
+        port_name = str(port)
         ser = serial.Serial(port_name,
                             baudrate=baudrate,
                             timeout=uart_timeout_sec

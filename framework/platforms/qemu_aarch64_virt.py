@@ -121,7 +121,7 @@ class qemu_aarch64_virt(generic_emulator):
             "qemu-system-aarch64",
             "-nographic",
             "-M", f"virt,secure=on,virtualization=on,gic-version={gic_version}",
-            "-cpu", "cortex-a53",
+            "-cpu", "cortex-a53,pmu=on",
             "-smp", "4",
             "-m", "4G",
             "-bios", f"{self.firmware_dir}/flash.bin",
@@ -151,5 +151,6 @@ class qemu_aarch64_virt(generic_emulator):
                 )
 
         diff_ports = self.diff_ports(initial_pts_ports, final_pts_ports)
+        diff_ports = [f"/dev/pts/{port}" for port in diff_ports]
 
         return proc, qemu_stderr_path, errf, diff_ports
