@@ -61,8 +61,5 @@ class s32z270(generic_platform):
         for guest_bin in list_guests:
             if guest_bin.endswith(".elf"):
                 cmd.append(os.path.join(guest_bins, guest_bin))
-        super().run_command(cmd, log_tab_level=2)
-        # print("RUNNING COMMAND: " + " ".join(cmd))
-
-        # while(1):
-        #     x=2
+        proc = super().run_command(cmd, log_tab_level=2)
+        return proc

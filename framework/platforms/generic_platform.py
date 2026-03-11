@@ -14,15 +14,15 @@ class generic_platform:
         self.is_emulated = False
     
     def run_command(self, command, log_tab_level=0, cwd=None):
-        result = subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         print_log("[INFO]", f"Running command: {' '.join(command)}", tab_level=log_tab_level)
-        print_log("[OUTPUT]", f"stdout: {result.stdout}", tab_level=log_tab_level + 1)
-        if result.returncode != 0:
-            print_log("[ERROR]", f"Command '{' '.join(command)}'", tab_level=log_tab_level + 1)
-            print_log("[ERROR]", f"failed with error:\n{result.stderr}", tab_level=log_tab_level + 2)
-            raise Exception(f"Command '{' '.join(command)}' failed")
-        return result.stdout
-    
+        return proc
 
 class generic_emulator(generic_platform):
     def __init__(self, wrkdir):

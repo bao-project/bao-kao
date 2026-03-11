@@ -320,12 +320,20 @@ class test_framework:
         else:
             serial_ports = platform.get_serial_ports()
             log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmark")
-            proc, stderr_path, errf, serial_ports = platform.launch_test(
+            proc = platform.launch_test(
                 run_bin, irq_flags, guests_bins, setup, self.hypervisor
             )
 
             logger_inst.wait_for_finish(log_threads)
-        
+
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=5)
+
+            if proc.returncode != 0:
+                err = proc.stderr.read() if proc.stderr else ""
+                raise Exception(f"Command failed: {err}")
+                    
         if not serial_ports:
             print("[INFO] No serial ports returned by platform. Skipping logger and cleanup.")
             return

@@ -209,11 +209,9 @@ def serve_uboot_http_auto(
         httpd.serve_forever()
     """)
 
-    # print(f"[INFO] Serving mode={mode}, payload={payload}")
-    # print(f"[INFO] boot.scr route: http://{bind}:80{boot_route}")
-    # print(f"[INFO] payload  route: http://{bind}:80{artifact_route}")
-
-    subprocess.run(["sudo", sys.executable, "-c", server_code], check=True)
+    # subprocess.run(["sudo", sys.executable, "-c", server_code], check=True)
+    proc = subprocess.Popen(["sudo", sys.executable, "-c", server_code], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return proc
 
 class zcu104(generic_platform):
     def __init__(self, wrkdir):
@@ -272,7 +270,6 @@ class zcu104(generic_platform):
         print_log("INFO", "Please flash the BOOT.bin to the SD card and insert it into the board.", tab_level=1)
         input("Press Enter to continue once the board is ready...")
 
-        serve_uboot_http_auto(run_img, mode=hypervisor, use_uboot_image=False)
+        proc = serve_uboot_http_auto(run_img, mode=hypervisor, use_uboot_image=False)
 
-        serial_ports = ["/dev/ttyUSB1"] 
-        return None, None, None, serial_ports
+        return proc
