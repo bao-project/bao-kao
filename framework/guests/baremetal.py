@@ -64,30 +64,31 @@ class baremetal:
             print("local repo:", self.local_repo_path)
         return self.srcs_dir
 
-
-
 class baremetal_test(baremetal):
     def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
                  bao_tests_path, bin_name, build_flags, local_repo_path=None):
         
+        local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_benchmarks/bao-baremetal-test"
         super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
                          bao_tests_path, bin_name, build_flags, local_repo_path)
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
         self.git_rev = "d32ac417fc7057f1ff510d48a35fb8ec0cde79cd"
 
+
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
 
-        tests_srcs_abs = os.path.abspath(self.tests_srcs)
+        # tests_srcs_abs = os.path.abspath(self.tests_srcs)
         bao_tests_abs = os.path.abspath(self.bao_tests_path)
+        tests_srcs_abs = os.path.join(bao_tests_abs, "src", "tests")
 
-        tests_root = os.path.join(self.srcs_dir, "tests")
-        tests_src_dst = tests_root
-        tests_baotests_dst = os.path.join(tests_root, "bao-tests")
+        tests_src_dst = os.path.join(self.srcs_dir, "tests")
+        tests_baotests_dst = os.path.join(tests_src_dst, "bao-tests")
 
-        if os.path.exists(tests_root):
-            shutil.rmtree(tests_root)
+        if os.path.exists(tests_src_dst):
+            shutil.rmtree(tests_src_dst)
+
         os.makedirs(tests_src_dst, exist_ok=True)
         os.makedirs(os.path.join(tests_baotests_dst, "src"), exist_ok=True)
 
@@ -96,7 +97,7 @@ class baremetal_test(baremetal):
         shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
         print_log("INFO", "Running codegen.py ...", tab_level=1)
-        codegen_dir = os.path.join(bao_tests_abs, "framework")
+        codegen_dir = os.path.join(bao_tests_abs)
         generated_output = os.path.join(tests_baotests_dst, "src", "testf_entry.c")
         self.run_cmd(
             ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],
@@ -109,6 +110,7 @@ class baremetal_test(baremetal):
             "make",
             f"PLATFORM={platform}",
             "BAO_TEST=1",
+            "BAREMETAL_TESTS=1",
             f"TESTF_LOG_LEVEL={log_level}",
             f"CROSS_COMPILE={toolchain}",
             f"TESTF_TESTS_DIR={tests_src_dst}",
@@ -126,7 +128,8 @@ class baremetal_test(baremetal):
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
         
-        make_cmd.append(self.build_flags)
+        # make_cmd.append(self.build_flags)
+        
 
         self.run_cmd(make_cmd, cwd=self.srcs_dir)
 
@@ -142,54 +145,3 @@ class baremetal_test(baremetal):
 
         print_log("SUCCESS", f"Built baremetal guest stored at {out_bin}", tab_level=1)
         return os.path.join(out_bin, f"{self.bin_name}.bin")
-
-
-class baremetal_benchmark(baremetal):
-    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs,
-                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
-        
-        # local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_benchmarks/bao-baremetal-test"
-        # local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_guest_PR/bao-baremetal-test"
-        super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
-                         bao_tests_path, bin_name, build_flags, local_repo_path)
-        
-        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "16cc8a7f84c4d0f4dae7cd6855c2f5dca21fdd7b"
-
-
-    def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
-        self.fetch_sources()
-
-        make_cmd = [
-            "make",
-            f"PLATFORM={platform}",
-            f"CROSS_COMPILE={toolchain}",
-            "BAREMETAL_BENCHMARKS=1",
-            f"BENCHMARK={self.benchmark}",
-            f"GUEST={self.bin_name}",
-        ]
-
-        env = os.environ.copy()
-
-        if self.build_flags:
-            for item in self.build_flags.split():
-                k, v = item.split("=", 1)
-                env[k] = v
-
-
-        self.run_cmd(make_cmd, cwd=self.srcs_dir, env=env)
-
-        # Install artifacts
-        out_bin = self.bin_dir
-        os.makedirs(out_bin, exist_ok=True)
-
-        built_dir = os.path.join(self.srcs_dir, "build", self.guest_name)
-
-        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.bin"),
-                    os.path.join(out_bin, f"{self.bin_name}.bin"))
-        shutil.copy(os.path.join(built_dir, f"{self.guest_name}.elf"),
-                    os.path.join(out_bin, f"{self.bin_name}.elf"))
-
-        print_log("SUCCESS", f"Successfully built baremetal benchmark guest!", tab_level=2)
-        return os.path.join(out_bin, f"{self.bin_name}.bin")
-

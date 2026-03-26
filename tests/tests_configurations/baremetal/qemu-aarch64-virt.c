@@ -1,6 +1,6 @@
 #include <config.h>
 
-VM_IMAGE(baremetal_image, XSTR(BAO_WRKDIR_IMGS/guest_1.bin))
+VM_IMAGE(baremetal_image, XSTR(BAO_WRKDIR_IMGS/baremetal.bin))
 
 struct config config = {
     
@@ -18,7 +18,7 @@ struct config config = {
             .entry = 0x50000000,
 
             .platform = {
-                .cpu_num = 1,
+                .cpu_num = 4,
                 
                 .region_num = 1,
                 .regions =  (struct vm_mem_region[]) {

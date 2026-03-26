@@ -11,6 +11,9 @@
 unsigned int testframework_tests;
 unsigned int testframework_fails;
 
+// codegen.py declarations begin
+// codegen.py declarations end
+
 void testf_entry(void)
 {
     if (cpu_is_master()) {
