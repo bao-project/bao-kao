@@ -188,9 +188,6 @@ class TestLogger:
             std = var ** 0.5
             return {"n": n, "avg": avg, "max": mx, "min": mn, "std": std, "var": var}
 
-        # def _to_us(cycles):
-        #     return cycles / CPU_FREQ_HZ * 1e6
-
         def _print_table(xs):
             from prettytable import PrettyTable
 
@@ -240,9 +237,9 @@ class TestLogger:
         threads = []
 
         for port in ports_list:
-            self.open_connection(port)
-            new_thread = threading.Thread(target=self.listener, args=[self.serial_port, echo, is_benchmark])
-            threads.append(new_thread)
+            ser = self.open_connection(port)
+            t = threading.Thread(target=self.listener, args=(ser, echo, is_benchmark))
+            threads.append(t)
 
         for thread in threads:
             thread.start()
@@ -256,18 +253,14 @@ class TestLogger:
         for thread in threads:
             thread.join()
 
-
     def listener(self, ser_port, echo, is_benchmark=False):
-        """
-        Listener to receive test results.
-        """
         def decode_and_replace(res):
             replacements = [
-                ('\\r\\n', '\r\n'),
-                ('\\x1b[0m\\x1b[1;', '\\x1b[1;'),
-                ('\\x1b[1;', '\033['),
-                ('\\x1b', '\033'),
-                ('#$#', '#')
+                ('\r\n', '\n'),
+                ('\x1b[0m\x1b[1;', '\x1b[1;'),
+                ('\x1b[1;', '\033['),
+                ('\x1b', '\033'),
+                ('#$#', '#'),
             ]
             line = res.decode(errors='ignore')
             for old, new in replacements:
@@ -285,72 +278,71 @@ class TestLogger:
 
         def handle_command(line):
             if self.test_tags['c'] in line:
-                command = line.split()[0] + " " + line.split()[1]
-                if command in self.logger_commands:
-                    self.logger_commands[command](line)
-                else:
-                    self.TEST_RESULTS = line
-                    self.clear_timeout()
+                parts = line.split()
+                if len(parts) >= 2:
+                    command = parts[0] + " " + parts[1]
+                    if command in self.logger_commands:
+                        self.logger_commands[command](line)
+                    else:
+                        self.TEST_RESULTS = line
+                        self.clear_timeout()
 
         def handle_test_completion(res_log, boot_failure, is_benchmark=False):
             results = {}
             self.clear_timeout()
-            if not is_benchmark:
-                if not boot_failure:
-                    for line in reversed(res_log):
-                        if self.test_tags['c'] in line and "END" not in line:
-                            self.TEST_RESULTS = line
-                            for item in line.split():
-                                if '#' in item:
-                                    key, value = item.split('#', 1)
-                                    results[key] = int(value)
-                            self.TEST_RESULTS = results
-                            break
-                    else:
-                        results["FAIL"] = 1
+            if not is_benchmark and not boot_failure:
+                for line in reversed(res_log):
+                    if self.test_tags['c'] in line and "END" not in line:
+                        for item in line.split():
+                            if '#' in item:
+                                key, value = item.split('#', 1)
+                                results[key] = int(value)
+                        self.TEST_RESULTS = results or {"FAIL": 1}
+                        break
+                else:
+                    self.TEST_RESULTS = {"FAIL": 1}
 
-                    self.TEST_RESULTS = results
+        try:
+            while not self.list_events['event_stop_listener'].is_set():
+                res_log = []
+                boot_failure = False
 
-        while not self.list_events['event_stop_listener'].is_set():
-            res = b""
-            res_log = []
-            boot_failure = False
+                while not self.list_events['event_stop_listener'].is_set():
+                    try:
+                        res = ser_port.readline()
+                    except serial.SerialException:
+                        self.list_events['event_stop_listener'].set()
+                        break
 
-            while not (res.endswith(b"\r\n") and (self.test_tags['end']).encode('utf-8') in res):
-                res = ser_port.readline()
-                new_line = decode_and_replace(res)
-                res_log.append(new_line)
+                    if not res:
+                        continue
 
-                if handle_boot_failure(new_line):
-                    boot_failure = True
+                    new_line = decode_and_replace(res)
+                    res_log.append(new_line)
 
-                handle_command(new_line)
+                    if handle_boot_failure(new_line):
+                        boot_failure = True
 
-                if self.list_events['event_stop_listener'].is_set():
-                    break
+                    handle_command(new_line)
 
-            handle_test_completion(res_log, boot_failure, is_benchmark)
+                    if self.test_tags['end'] in new_line:
+                        break
 
-            self.log_level[echo](res_log)
+                if res_log:
+                    handle_test_completion(res_log, boot_failure, is_benchmark)
+                    self.log_level[echo](res_log)
 
-        ser_port.close()
-
+        finally:
+            try:
+                ser_port.close()
+            except Exception:
+                pass
 
     def open_connection(self, port, baudrate=115200, uart_timeout_sec=1):
         """
         Validate connection between test framework and platform
         """
-
-        port_name = str(port)
-        ser = serial.Serial(port_name,
-                            baudrate=baudrate,
-                            timeout=uart_timeout_sec
-                            )
-
-        ser.close()
-        ser.open()
-
-        self.serial_port = ser
+        return serial.Serial(str(port), baudrate=baudrate, timeout=uart_timeout_sec)
 
 def scan_pts_ports():
     """
