@@ -2,6 +2,7 @@ import argparse
 from asyncio import threads
 import os
 import sys
+import time
 import yaml
 import shutil
 import subprocess
@@ -17,17 +18,48 @@ from constants import print_log
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "hypervisor")))
 from bao import bao
-from generic import generic_hypervisor, standalone
+from generic import standalone
+
+
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
+from qemu_aarch64_virt import qemu_aarch64_virt
+from tc4dx import tc4dx
+from zcu104 import zcu104
+from s32z270 import s32z270
+from rh850 import rh850
+
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
+from baremetal import baremetal_test
+
+dict_platforms = {
+    "qemu-aarch64-virt": qemu_aarch64_virt,
+    "tc4dx": tc4dx,
+    "s32z270": s32z270,
+    "rh850-u2a16" : rh850,
+    "zcu104": zcu104
+}
+
+dict_guests = {
+    "baremetal" : baremetal_test,
+}
+
+benchmarks_path = os.path.abspath(os.path.join(cur_dir, "../bao-benchmarks"))
+IS_BENCHMARKS_AVAILABLE = False
+if os.path.exists(benchmarks_path) and os.listdir(benchmarks_path):
+    IS_BENCHMARKS_AVAILABLE = True
+    sys.path.append(os.path.abspath(os.path.join(benchmarks_path, "guests")))
+    from baremetal_benchmark import baremetal_benchmark
+    dict_guests["baremetal_benchmark"] = baremetal_benchmark
 
 class test_framework:
     def __init__(self, wkrdir):
         self.tests_srcs = os.path.abspath(os.path.join(cur_dir, "../src/tests"))
-        self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../../bao-tests"))
+        self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../../bao-tests/tests"))
         self.bao_hypervisor_dir = os.path.abspath(os.path.join(cur_dir, "../../../"))
         self.disable_logger = False
         self.list_obj = []
 
-    def build_guests(self, platform):
+    def build_guests(self, platform, interrupt_flags):
 
         for guest in self.test_config['guests']:
             print_log("INFO", f"Building guest:", tab_level=1)
@@ -39,7 +71,7 @@ class test_framework:
                 return ""
                 
 
-            if self.run_type == "benchmark":
+            if self.run_type == "benchmarks":
                 guest_type = "baremetal_benchmark"
                 guest_name = guest[list(guest.keys())[0]][0]['bin_name']
                 building_flags = get_platform_build_flags(
@@ -65,19 +97,10 @@ class test_framework:
             list_suites = self.test_config["suites"]
             benchmark = self.test_config["benchmark"]
 
-            # get absolute path of current directory
-            cur_dir = os.getcwd()
-            tests_srcs_dir = os.path.realpath(
-                os.path.join(cur_dir, self.tests_srcs)
-            )
-
-            bao_tests_dir = os.path.realpath(
-                os.path.join(cur_dir, self.bao_tests_dir)
-            )
             guest_instance = guest_class(
                 wrkdir, list_tests, list_suites, benchmark,
-                tests_srcs=tests_srcs_dir,
-                bao_tests_path=bao_tests_dir,
+                tests_srcs=self.tests_srcs,
+                bao_tests_path=self.bao_tests_dir,
                 bin_name = bin_name,
                 build_flags = flags
             )
@@ -92,8 +115,6 @@ class test_framework:
                 )
 
     def run_cmd(self, cmd, cwd=None):
-        # print(f"[CMD] {' '.join(cmd)}")
-        # p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         p = subprocess.run(cmd, cwd=cwd, text=True)
 
         if p.returncode != 0:
@@ -104,7 +125,6 @@ class test_framework:
     def build_run_bin(self, wrkdir, config_path, platform):
 
         wrkdir_abs = os.path.abspath(wrkdir)
-        # print_log("INFO", "Setting up Bao hypervisor build environment...", tab_level=1)
 
         guests_build_dir = os.path.join(wrkdir_abs, "guests", "build")
         platform_name = self.test_config['platform']
@@ -216,10 +236,8 @@ class test_framework:
         args = parser.parse_args()
         
         test_config = {}
-        # if all fields of gicv, irqc, ipic were not provided, return error
-        if args.gicv == "" and args.irqc == "" and args.ipic == "":
-            parser.error("At least one of --gicv, --irqc or --ipic must be provided when using --test and --setup.")
 
+        irq_flags = {}
         if args.gicv != "":
             irq_flags = {'GIC_version': args.gicv}
         else:
@@ -243,19 +261,27 @@ class test_framework:
 
         # parse tests file
         if args.test != " ":
-            self.run_type = "test"
+            self.run_type = "tests"
             config_file = os.path.abspath(os.path.join(cur_dir, "test_config.yaml"))
             test_config = read_config(config_file)
-            tests_lists = test_config.get("tests", {}).get(args.setup, {})
-            list_tests = tests_lists.get(args.test, [{}])[0].get("list_tests", "")
-            list_suites = tests_lists.get(args.test, [{}])[1].get("list_suites", "")
 
-            list_setups = test_config.get("setups", {}).get("test", {})
-            list_guests = list_setups.get(args.setup, {})
+            tests_cfg = test_config.get("tests", {})
+            test_entry = tests_cfg.get(args.test, [])
+            list_tests = test_entry[0].get("list_tests", "") if len(test_entry) > 0 else ""
+            list_suites = test_entry[1].get("list_suites", "") if len(test_entry) > 1 else ""
+
+            setups_cfg = test_config.get("setups", {})
+            list_guests = {}
+
+            for group_name, setup_map in setups_cfg.items():
+                if args.setup in setup_map:
+                    list_guests = setup_map[args.setup]
+                    break
+
 
         # parse benchmark file
         if args.benchmark != " ":
-            self.run_type = "benchmark"
+            self.run_type = "benchmarks"
             config_file = os.path.abspath(os.path.join(cur_dir, "benchmarks_config.yaml"))
             test_config = read_config(config_file)
             list_setups = test_config.get("benchmarks", {})
@@ -265,13 +291,18 @@ class test_framework:
                     break
         
 
-        bao_config_path = os.path.abspath(os.path.join(cur_dir, f"tests_configurations"))
+        bao_config_path = "" 
+        if self.run_type == "benchmarks":
+             bao_config_path = os.path.join(benchmarks_path, "tests_configurations")
+        elif self.run_type == "tests":
+            bao_config_path = os.path.join(cur_dir, f"../{self.run_type}/tests_configurations")
+        print(f"bao_config_path: {bao_config_path}")
 
         if self.run_type is not None:
-            if self.run_type == "test":
-                bao_config_path = os.path.join(bao_config_path, "tests", args.setup)
-            elif self.run_type == "benchmark":
-                bao_config_path = os.path.join(bao_config_path, "benchmarks", args.benchmark)
+            if self.run_type == "tests":
+                bao_config_path = os.path.join(bao_config_path, args.setup)
+            elif self.run_type == "benchmarks":
+                bao_config_path = os.path.join(bao_config_path, args.benchmark)
 
         self.build_firmware = not args.no_firmware_build
         self.hypervisor = args.hypervisor
@@ -300,7 +331,13 @@ class test_framework:
             proc, stderr_path, errf, serial_ports = platform.launch_test(
                 run_bin, irq_flags, guests_bins, setup, self.hypervisor
             )
-            logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmark")
+            # time.sleep(1)
+
+            if proc.poll() is not None:
+                raise RuntimeError("QEMU died before serial connection")
+            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
+
+            logger_inst.wait_for_finish(log_threads)
 
             if proc != None:
                 parent = psutil.Process(proc.pid)
@@ -319,7 +356,7 @@ class test_framework:
 
         else:
             serial_ports = platform.get_serial_ports()
-            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmark")
+            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
             proc = platform.launch_test(
                 run_bin, irq_flags, guests_bins, setup, self.hypervisor
             )
@@ -346,31 +383,6 @@ class test_framework:
             shutil.rmtree(guests_dir)
 
 
-
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
-from qemu_aarch64_virt import qemu_aarch64_virt
-from tc4dx import tc4dx
-from zcu104 import zcu104
-
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
-from baremetal import baremetal_test, baremetal_benchmark
-# from baremetal_benchmark import baremetal_benchmark
-from s32z270 import s32z270
-from rh850 import rh850
-
-dict_platforms = {
-    "qemu-aarch64-virt": qemu_aarch64_virt,
-    "tc4dx": tc4dx,
-    "s32z270": s32z270,
-    "rh850-u2a16" : rh850,
-    "zcu104": zcu104
-}
-
-dict_guests = {
-    "baremetal" : baremetal_test,
-    "baremetal_benchmark" : baremetal_benchmark
-}
-
 if __name__ == "__main__":
     wrkdir = os.getcwd()
     wrkdir += "/wrkdir"
@@ -382,7 +394,6 @@ if __name__ == "__main__":
     tf.parse_args()
     print_log("SUCCESS", f"Parsed test configuration.", tab_level=0)
 
-    interrupt_flags = tf.test_config['irq_flags']
     bao_cfg_path_abs = os.path.abspath(tf.test_config['bao_config'])
 
     tf.cleanup()
@@ -394,9 +405,13 @@ if __name__ == "__main__":
     print_log("INFO", f"Building firmware...", tab_level=1)
     platform.build_toolchain()
 
-
+    if tf.test_config['irq_flags'] == {}:
+        interrupt_flags = platform.irq_flags
+    else:
+        interrupt_flags = tf.test_config['irq_flags']
+    
     print_log("INFO", f"Building guests...", tab_level=0)
-    tf.build_guests(platform)
+    tf.build_guests(platform, interrupt_flags)
 
     print_log("INFO", f"Building run image [{tf.hypervisor}]...", tab_level=0)
     run_bin, bin_name, elf_name = tf.build_run_bin(
