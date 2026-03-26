@@ -26,6 +26,7 @@ from generic_platform import generic_emulator
 
 class qemu_aarch64_virt(generic_emulator):
     def __init__(self, wrkdir):
+        super().__init__(wrkdir)
         self.firmware_dir = f"{wrkdir}/platforms/firmware"
         self.srcs_dir = f"{wrkdir}/platforms/qemu_aarch64_virt"
         self.qemu_version = "7.2.0"
@@ -33,6 +34,7 @@ class qemu_aarch64_virt(generic_emulator):
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
         self.architecture = "aarch64"
+        self.irq_flags = {'GIC_version': "GICV3"}
 
         
         if not os.path.exists(self.firmware_dir):
@@ -91,7 +93,7 @@ class qemu_aarch64_virt(generic_emulator):
         atf_instance.build("qemu-aarch64-virt", uboot_bin, self.toolchain, gic_version)
         atf_instance.install("qemu-aarch64-virt", self.firmware_dir)
 
-    def launch_test(self, bao_img, interrupt_flags, guest_os="baremetal"):
+    def launch_test(self, run_bin, interrupt_flags, guests_bins, guest_os="baremetal", hypervisor=None):
         if interrupt_flags:
             gic_version = interrupt_flags.get("GIC_version", "GICV2")
             gic_version = gic_version.replace("GICV", "")
@@ -125,32 +127,34 @@ class qemu_aarch64_virt(generic_emulator):
             "-smp", "4",
             "-m", "4G",
             "-bios", f"{self.firmware_dir}/flash.bin",
-            "-device", f"loader,file={bao_img},addr=0x50000000,force-raw=on",
+            "-device", f"loader,file={run_bin},addr=0x50000000,force-raw=on",
             "-device", "virtio-net-device,netdev=net0",
             "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:5555-:22",
         ] + extra_serial_args
 
-        # print("[CMD]", " ".join(cmd))
         print_log("INFO", f"Launching QEMU...", tab_level=0)
-
-        initial_pts_ports = self.scan_pts_ports()
-
         errf = open(qemu_stderr_path, "wb")
-        proc = subprocess.Popen(cmd, stderr=errf, stdout=subprocess.PIPE)
 
-        final_pts_ports = initial_pts_ports
-        while final_pts_ports == initial_pts_ports:
-            final_pts_ports = self.scan_pts_ports()
-            if proc.poll() is not None:
-                # QEMU exited early; clean up
-                errf.close()
-                if os.path.exists(qemu_stderr_path):
-                    os.remove(qemu_stderr_path)
-                raise RuntimeError(
-                    f"Error launching QEMU (exited with code {proc.returncode})"
-                )
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,   # optional, for logging/errors
+            text=True,
+            bufsize=1
+        )
 
-        diff_ports = self.diff_ports(initial_pts_ports, final_pts_ports)
-        diff_ports = [f"/dev/pts/{port}" for port in diff_ports]
+        pty_ports = []
 
-        return proc, qemu_stderr_path, errf, diff_ports
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                if proc.poll() is not None:
+                    raise RuntimeError(f"QEMU exited with code {proc.returncode}")
+                continue
+
+            if "char device redirected to " in line:
+                pty = line.split("char device redirected to ", 1)[1].split(" ", 1)[0].strip()
+                pty_ports.append(pty)
+                break
+
+        return proc, qemu_stderr_path, errf, pty_ports

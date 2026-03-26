@@ -63,7 +63,6 @@ def generate_boot_txt(
 
     return "\n".join(lines) + "\n"
 
-
 def make_boot_scr(boot_txt_path: str, boot_scr_path: str, mkimage: str = "mkimage"):
     subprocess.run(
         [
@@ -79,7 +78,6 @@ def make_boot_scr(boot_txt_path: str, boot_scr_path: str, mkimage: str = "mkimag
         stderr=subprocess.PIPE,
         check=True,
     )
-
 
 def prepare_http_boot_artifacts(
     run_path: str,
@@ -126,7 +124,6 @@ def prepare_http_boot_artifacts(
         "boot_route": "/boot.scr",
         "artifact_route": artifact_route,
     }
-
 
 def serve_uboot_http_auto(
     run_path: str,
@@ -222,6 +219,7 @@ class zcu104(generic_platform):
         self.prebuilt_firmware_version = "xlnx_rel_v2023.1"
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
         self.architecture = "aarch64"
+        self.irq_flags = {'GIC_version': "GICV3"}
 
         
         if not os.path.exists(self.firmware_dir):
@@ -249,7 +247,8 @@ class zcu104(generic_platform):
         if os.path.exists(f"{self.firmware_dir}/prebuilt_firmware"):
             shutil.rmtree(f"{self.firmware_dir}/prebuilt_firmware")
 
-        super().run_command(cmd, cwd=self.firmware_dir, log_tab_level=2)
+        proc = super().run_command(cmd, cwd=self.firmware_dir, log_tab_level=2)
+        proc.wait()
 
         boot_bin_path =  f"{self.firmware_dir}/prebuilt_firmware/zcu104-zynqmp"
         shutil.copy(uboot_elf, os.path.join(boot_bin_path, "u-boot.elf"))
@@ -268,7 +267,6 @@ class zcu104(generic_platform):
 
 
         print_log("INFO", "Please flash the BOOT.bin to the SD card and insert it into the board.", tab_level=1)
-        input("Press Enter to continue once the board is ready...")
 
         proc = serve_uboot_http_auto(run_img, mode=hypervisor, use_uboot_image=False)
 
