@@ -295,7 +295,7 @@ class test_framework:
         if self.run_type == "benchmarks":
              bao_config_path = os.path.join(benchmarks_path, "tests_configurations")
         elif self.run_type == "tests":
-            bao_config_path = os.path.join(cur_dir, f"../{self.run_type}/tests_configurations")
+            bao_config_path = os.path.join(cur_dir, f"../../{self.run_type}/tests_configurations")
         print(f"bao_config_path: {bao_config_path}")
 
         if self.run_type is not None:
