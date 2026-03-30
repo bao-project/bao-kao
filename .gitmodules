@@ -1,6 +1,3 @@
 [submodule "ci"]
 	path = ci
 	url = git@github.com:bao-project/bao-ci.git
-[submodule "bao-benchmarks"]
-	path = bao-benchmarks
-	url = git@github.com:osyxtechnologies/bao-benchmarks.git
