@@ -27,6 +27,9 @@ class baremetal:
         self.bin_name = bin_name
         self.benchmark = benchmark
 
+        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
+        self.git_rev = "6bea057aa82e1d6f7f195af947d8021b703d8b57"
+
         if local_repo_path:
             self.use_local_repo = True
             self.local_repo_path = local_repo_path
@@ -68,13 +71,8 @@ class baremetal_test(baremetal):
     def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
                  bao_tests_path, bin_name, build_flags, local_repo_path=None):
         
-        local_repo_path = "/home/diogo/Desktop/bao_dev/test_framework_benchmarks/baremetal_benchmarks/bao-baremetal-test"
         super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
                          bao_tests_path, bin_name, build_flags, local_repo_path)
-
-        self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "d32ac417fc7057f1ff510d48a35fb8ec0cde79cd"
-
 
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
