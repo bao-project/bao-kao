@@ -43,7 +43,7 @@ dict_guests = {
     "baremetal" : baremetal_test,
 }
 
-benchmarks_path = os.path.abspath(os.path.join(cur_dir, "../bao-benchmarks"))
+benchmarks_path = os.path.abspath(os.path.join(cur_dir, "../../bao-benchmarks"))
 IS_BENCHMARKS_AVAILABLE = False
 if os.path.exists(benchmarks_path) and os.listdir(benchmarks_path):
     IS_BENCHMARKS_AVAILABLE = True
