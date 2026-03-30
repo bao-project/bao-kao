@@ -53,8 +53,8 @@ if os.path.exists(benchmarks_path) and os.listdir(benchmarks_path):
 
 class test_framework:
     def __init__(self, wkrdir):
-        self.tests_srcs = os.path.abspath(os.path.join(cur_dir, "../src/tests"))
-        self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../../bao-tests/tests"))
+        self.tests_srcs = os.path.abspath(os.path.join(cur_dir, "../../tests"))
+        self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../tests"))
         self.bao_hypervisor_dir = os.path.abspath(os.path.join(cur_dir, "../../../"))
         self.disable_logger = False
         self.list_obj = []

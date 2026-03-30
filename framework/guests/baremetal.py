@@ -79,21 +79,18 @@ class baremetal_test(baremetal):
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
 
-        # tests_srcs_abs = os.path.abspath(self.tests_srcs)
+        tests_srcs_abs = os.path.abspath(self.tests_srcs)
         bao_tests_abs = os.path.abspath(self.bao_tests_path)
-        tests_srcs_abs = os.path.join(bao_tests_abs, "src", "tests")
 
         tests_src_dst = os.path.join(self.srcs_dir, "tests")
-        tests_baotests_dst = os.path.join(tests_src_dst, "bao-tests")
+        tests_baotests_dst = os.path.join(tests_src_dst)
 
         if os.path.exists(tests_src_dst):
             shutil.rmtree(tests_src_dst)
 
         os.makedirs(tests_src_dst, exist_ok=True)
-        os.makedirs(os.path.join(tests_baotests_dst, "src"), exist_ok=True)
 
-        shutil.copytree(tests_srcs_abs, tests_src_dst, dirs_exist_ok=True)
-        bao_tests_src_dir = os.path.join(bao_tests_abs, "src")
+        bao_tests_src_dir = os.path.join(tests_srcs_abs, "src")
         shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
         print_log("INFO", "Running codegen.py ...", tab_level=1)
@@ -113,8 +110,7 @@ class baremetal_test(baremetal):
             "BAREMETAL_TESTS=1",
             f"TESTF_LOG_LEVEL={log_level}",
             f"CROSS_COMPILE={toolchain}",
-            f"TESTF_TESTS_DIR={tests_src_dst}",
-            f"TESTF_REPO_DIR={tests_baotests_dst}",
+            f"TESTF_TESTS_DIR={tests_src_dst}"
         ]
 
         if self.list_suites:
