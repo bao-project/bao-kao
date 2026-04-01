@@ -27,7 +27,7 @@ class s32z270(generic_platform):
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/arm_none_eabi"
         self.architecture = "aarch32"
-
+        self.irq_flags = {}
         
         if not os.path.exists(self.firmware_dir):
             os.makedirs(self.firmware_dir)
