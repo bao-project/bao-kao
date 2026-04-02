@@ -21,9 +21,9 @@ class aarch64_none_elf:
 
         tarball_name = f"arm-gnu-toolchain-{self.toolchain_version}-{self.host_platform}-aarch64-none-elf.tar.xz"
         self.download_url = f"https://developer.arm.com/-/media/Files/downloads/gnu/{self.toolchain_version}/binrel/{tarball_name}"
-        
+
         os.makedirs(os.path.dirname(self.toolchain_dir), exist_ok=True)
-        
+
 
     def fetch_sources(self):
         """Download the toolchain tarball if not present."""
@@ -36,8 +36,8 @@ class aarch64_none_elf:
             need_extract = True
         else:
             print_log("INFO", f"Toolchain already exists locally", tab_level=3)
-        return self.toolchain_dir, need_extract 
-    
+        return self.toolchain_dir, need_extract
+
     def extract(self, tarball_path):
         """Extract the tarball into self.toolchain_dir"""
         extract_parent = os.path.dirname(self.toolchain_dir)

@@ -69,7 +69,7 @@ class test_framework:
                     if platform_name in flags:
                         return flags[platform_name]
                 return ""
-                
+
 
             if self.run_type == "benchmarks":
                 guest_type = "baremetal_benchmark"
@@ -92,7 +92,7 @@ class test_framework:
             flags=building_flags
 
             guest_class = dict_guests.get(guest_type)
-            
+
             list_tests = self.test_config["tests"]
             list_suites = self.test_config["suites"]
             benchmark = self.test_config["benchmark"]
@@ -119,8 +119,8 @@ class test_framework:
 
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
-    
- 
+
+
 
     def build_run_bin(self, wrkdir, config_path, platform):
 
@@ -135,7 +135,7 @@ class test_framework:
 
         hypervisor_dict = {
             "bao" : bao,
-            "standalone" : standalone 
+            "standalone" : standalone
         }
 
         if os.path.isdir(os.path.join(config_path, platform_name)):
@@ -143,7 +143,7 @@ class test_framework:
 
         hypervisor_class = hypervisor_dict.get(self.hypervisor)
         hypervisor_instance = hypervisor_class()
-        
+
         hypervisor_instance.fetch_sources(self.hypervisor_srcs)
         hypervisor_instance.clean(hypervisor_instance.srcs_path)
 
@@ -156,7 +156,7 @@ class test_framework:
         )
 
         print_log("SUCCESS", f"Successfully built final image!", tab_level=1)
-        return out_bin_path, bin_name, elf_name 
+        return out_bin_path, bin_name, elf_name
 
     def clean_build_artifacts(self):
         #ToDo: implement build artifact cleanup process
@@ -186,7 +186,7 @@ class test_framework:
         parser.add_argument("-platform", "--platform",
                     help="Used define the target platform",
                     default=" ")
-        
+
         parser.add_argument("-gicv", "--gicv",
                     required=False,
                     help="Used to define the GIC version setup for the platform",
@@ -201,40 +201,40 @@ class test_framework:
                         required=False,
                         help="Used to define the IPIC setup for the platform",
                         default="")
-        
+
         parser.add_argument("-test", "--test",
                     help="Name of default test to be executed",
                     default=" ")
-        
+
         parser.add_argument("-setup", "--setup",
                     help="Target setup (e.g., baremetal freertos)",
                     default=" ")
-        
+
         parser.add_argument("--no_logger", action="store_true",
                     help="Disables logging functionality",
                     default=False)
-        
+
         parser.add_argument("-benchmark", "--benchmark",
                     help="Used to define if the test execution is for benchmark purposes, which may impact the logging and reporting behavior of the framework",
                     default=" ")
         parser.add_argument("--no_firmware_build", action="store_true",
                     help="Skips firmware build phase, assuming pre-built firmware is available. This can be useful for development iterations when firmware changes are not needed.",
                     default=False)
-        
+
         parser.add_argument("-hypervisor", "--hypervisor",
                         required=False,
                         help="Used to define if the Bao hypervisor build phase should be skipped, assuming a pre-built hypervisor binary is available. This can be useful for development iterations when hypervisor changes are not needed.",
                         default="bao")
-        
+
         parser.add_argument("--hypervisor_srcs",
                             required=False,
                             help="Path to Bao hypervisor sources. If not provided, the framework will attempt to fetch the sources from the official repository.",
                             default="")
-        
-        
+
+
         # either "config" or "test" and "setup" must be provided
         args = parser.parse_args()
-        
+
         test_config = {}
 
         irq_flags = {}
@@ -251,7 +251,7 @@ class test_framework:
         def read_config(config_path):
             with open(config_path, "r") as f:
                 return yaml.safe_load(f)
-        
+
 
         list_tests = ""
         list_suites = ""
@@ -289,9 +289,9 @@ class test_framework:
                 if args.benchmark in setup:
                     list_guests = setup[args.benchmark]
                     break
-        
 
-        bao_config_path = "" 
+
+        bao_config_path = ""
         if self.run_type == "benchmarks":
              bao_config_path = os.path.join(benchmarks_path, "tests_configurations")
         elif self.run_type == "tests":
@@ -326,7 +326,7 @@ class test_framework:
 
         guests_bins = os.path.join(cur_dir, "wrkdir", "guests", "build")
         guests_bins = os.path.abspath(guests_bins)
-    
+
         if platform.is_emulated:
             proc, stderr_path, errf, serial_ports = platform.launch_test(
                 run_bin, irq_flags, guests_bins, setup, self.hypervisor
@@ -370,12 +370,12 @@ class test_framework:
             if proc.returncode != 0:
                 err = proc.stderr.read() if proc.stderr else ""
                 raise Exception(f"Command failed: {err}")
-                    
+
         if not serial_ports:
             print("[INFO] No serial ports returned by platform. Skipping logger and cleanup.")
             return
 
-    
+
     def cleanup(self):
         guests_dir = os.path.join(cur_dir, "wrkdir", "guests")
         if os.path.exists(guests_dir):
@@ -409,7 +409,7 @@ if __name__ == "__main__":
         interrupt_flags = platform.irq_flags
     else:
         interrupt_flags = tf.test_config['irq_flags']
-    
+
     print_log("INFO", f"Building guests...", tab_level=0)
     tf.build_guests(platform, interrupt_flags)
 

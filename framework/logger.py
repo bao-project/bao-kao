@@ -213,7 +213,7 @@ class TestLogger:
             # ])
 
             print(table)
-        
+
         _print_table(_parse_samples(serial_results))
         self.list_events['event_thread_finished'].set()
 
@@ -245,7 +245,7 @@ class TestLogger:
             thread.start()
 
         return threads
-    
+
     def wait_for_finish(self, threads):
         self.list_events['event_thread_finished'].wait()
         self.list_events['event_stop_listener'].set()

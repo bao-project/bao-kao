@@ -18,12 +18,12 @@ class tricore_elf:
 
         self.download_url = f"https://softwaretools-hosting.infineon.com/packages/com.ifx.tb.tool.aurixgcc/versions/{self.toolchain_version}/artifacts/aurixgcc_09-2025_Linux_{self.host_platform}.zip/download"
         os.makedirs(os.path.dirname(self.toolchain_dir), exist_ok=True)
-        
+
 
     def fetch_sources(self):
 
         print(f"Download the toolchain tarball if not present.")
-        print(f"Toolchain dir:{self.toolchain_dir}"), 
+        print(f"Toolchain dir:{self.toolchain_dir}"),
         need_extract = False
         if not os.path.exists(self.toolchain_dir):
             print(f"[INFO] Downloading {self.download_url}...")
@@ -33,8 +33,8 @@ class tricore_elf:
             need_extract = True
         else:
             print(f"[INFO] Toolchain already exists: {self.toolchain_dir}")
-        return self.toolchain_dir, need_extract 
-    
+        return self.toolchain_dir, need_extract
+
     def extract(self, tarball_path):
         """Extract the tarball into self.toolchain_dir"""
         extract_parent = os.path.dirname(self.toolchain_dir)
