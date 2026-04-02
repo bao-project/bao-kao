@@ -64,7 +64,7 @@ class baremetal:
                 self.run_cmd(["git", "submodule", "update", "--init", "--recursive"], cwd=self.srcs_dir)
         else:
             print_log("INFO", f"Guest sources already present.", tab_level=2)
-            print("local repo:", self.local_repo_path)
+
         return self.srcs_dir
 
 class baremetal_test(baremetal):
