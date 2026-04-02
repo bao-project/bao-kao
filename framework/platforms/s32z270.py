@@ -51,7 +51,7 @@ class s32z270(generic_platform):
         launch_script_path = os.path.join(cur_dir, "s32z270/t32.cmm")
         cmd = ["t32marm", "-s", launch_script_path]
 
-        if hypervisor is not None:
+        if hypervisor is not None and hypervisor != "standalone":
             run_elf = run_bin.replace(".bin", ".elf")
             run_img = os.path.join(self.firmware_dir, "run.elf")
             shutil.copy(run_elf, run_img)

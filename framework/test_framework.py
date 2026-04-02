@@ -79,7 +79,12 @@ class test_framework:
                     self.test_config['platform'],
                     guest_name
                 )
-            else:   
+
+                #add run_mode to building flags
+                if self.hypervisor == "standalone":
+                    building_flags += " STANDALONE=y"
+
+            else:
                 guest_type = list(guest.keys())[0]
                 guest_name = guest[guest_type][0]['bin_name']
                 building_flags = guest[guest_type][1]['flags']
