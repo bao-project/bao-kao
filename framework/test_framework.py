@@ -143,9 +143,6 @@ class test_framework:
             "standalone" : standalone
         }
 
-        if os.path.isdir(os.path.join(config_path, platform_name)):
-            config_path = os.path.join(config_path, platform_name)
-
         hypervisor_class = hypervisor_dict.get(self.hypervisor)
         hypervisor_instance = hypervisor_class()
 
