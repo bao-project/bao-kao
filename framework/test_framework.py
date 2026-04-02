@@ -326,8 +326,8 @@ class test_framework:
             'benchmark' : args.benchmark
         }
 
-    def launch_test(self, run_bin, irq_flags, setup, echo):
-        logger_inst = logger.TestLogger()
+    def launch_test(self, run_bin, irq_flags, setup, echo, platform):
+        logger_inst = logger.TestLogger(platform.cpu_freq, platform.timer_freq)
 
         guests_bins = os.path.join(cur_dir, "wrkdir", "guests", "build")
         guests_bins = os.path.abspath(guests_bins)
@@ -428,5 +428,5 @@ if __name__ == "__main__":
     if tf.build_firmware:
         platform.build_firmware(interrupt_flags)
 
-    tf.launch_test(run_bin, interrupt_flags, tf.test_config['setup'], tf.test_config['echo'])
+    tf.launch_test(run_bin, interrupt_flags, tf.test_config['setup'], tf.test_config['echo'], platform)
     tf.cleanup()

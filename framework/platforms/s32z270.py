@@ -20,6 +20,9 @@ from arm_none_eabi import arm_none_eabi
 
 from generic_platform import generic_platform
 
+TIMER_FREQ = 40000000 #Hz
+CPU_FREQ = 1000000000 #Hz
+
 class s32z270(generic_platform):
     def __init__(self, wrkdir):
         super().__init__(wrkdir)
@@ -27,8 +30,10 @@ class s32z270(generic_platform):
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/arm_none_eabi"
         self.architecture = "aarch32"
-        self.irq_flags = {}
-        
+        self.irq_flags = {},
+        self.cpu_freq = CPU_FREQ
+        self.timer_freq = TIMER_FREQ
+
         if not os.path.exists(self.firmware_dir):
             os.makedirs(self.firmware_dir)
 

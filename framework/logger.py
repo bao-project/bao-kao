@@ -13,7 +13,7 @@ class TestLogger:
     """
     Test logger class
     """
-    def __init__(self):
+    def __init__(self, cpu_freq, timer_freq):
         self.test_tags = {
             'c':            "[TESTF-C]",
             'py':           "[TESTF-PY]",
@@ -43,6 +43,8 @@ class TestLogger:
             'event_completed_test': threading.Event()
         }
         self.TEST_RESULTS = ''
+        self.cpu_freq = cpu_freq
+        self.timer_freq = timer_freq
 
     def print_message(self, message, message_type="info"):
         """
@@ -188,6 +190,17 @@ class TestLogger:
             std = var ** 0.5
             return {"n": n, "avg": avg, "max": mx, "min": mn, "std": std, "var": var}
 
+        def _cycles_to_us(cycles):
+            if self.timer_freq <= 0:
+                return float("nan")
+            return (cycles / self.timer_freq) * 1e6
+
+        def _time_unit_and_scale(avg_cycles):
+            avg_us = _cycles_to_us(avg_cycles)
+            if avg_us < 1:
+                return "ns", 1e3
+            return "us", 1.0
+
         def _print_table(xs):
             from prettytable import PrettyTable
 
@@ -197,7 +210,7 @@ class TestLogger:
                 return
 
             table = PrettyTable()
-            table.title = f"Benchmark summary (n={s['n']})"
+            table.title = f"Benchmark summary (n={s['n']} / CPU freq={self.cpu_freq} Hz)"
             table.field_names = ["Metric", "Average", "Max", "Min", "Std Dev", "Variance"]
 
             table.add_row([
@@ -205,12 +218,22 @@ class TestLogger:
                 f"{s['avg']:.3f}", f"{s['max']:.3f}", f"{s['min']:.3f}", f"{s['std']:.3f}", f"{s['var']:.3f}",
             ])
 
-            # var_us2 = s["var"] / (CPU_FREQ_HZ ** 2) * 1e12  # (us)^2
-            # table.add_row([
-            #     "Execution time (us)",
-            #     f"{_to_us(s['avg']):.3f}", f"{_to_us(s['max']):.3f}", f"{_to_us(s['min']):.3f}",
-            #     f"{_to_us(s['std']):.3f}", f"{var_us2:.3f}",
-            # ])
+            time_unit, scale = _time_unit_and_scale(s["avg"])
+            avg_time = _cycles_to_us(s["avg"]) * scale
+            max_time = _cycles_to_us(s["max"]) * scale
+            min_time = _cycles_to_us(s["min"]) * scale
+            std_time = _cycles_to_us(s["std"]) * scale
+
+            if self.cpu_freq <= 0:
+                var_time2 = float("nan")
+            else:
+                var_time2 = s["var"] / (self.cpu_freq ** 2) * 1e12 * (scale ** 2)
+
+            table.add_row([
+                f"Execution time ({time_unit})",
+                f"{avg_time:.3f}", f"{max_time:.3f}", f"{min_time:.3f}",
+                f"{std_time:.3f}", f"{var_time2:.3f}",
+            ])
 
             print(table)
 
