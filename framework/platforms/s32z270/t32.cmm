@@ -1,5 +1,6 @@
-; Variables
-ENTRY &baoBin &guest1 &guest2
+; First binary elf passed as argument will be loaded lastly, therefore will be the one used for
+; the entrypoint
+ENTRY &elf1 &elf2 &elf3
 &thumbBit="0"
 &spltLckBit="1"
 &rtu="0"
@@ -74,20 +75,17 @@ IF STATE.RUN()
 ; ===================================================================
 ; LOADERS
 ; ===================================================================
-;BAO HYPERVISOR
-Data.LOAD.Binary "&baoBin" &rtuStartAddr /Name BAO
-
-IF ("&guest1"!="")
+IF ("&elf3"!="")
 (
-  ; GUEST 1
-  Data.LOAD.Binary "&guest1" 0x32200000 /Name Guest1
+  Data.LOAD.Elf "&elf3" /NoClear
 )
 
-IF ("&guest2"!="")
+IF ("&elf2"!="")
 (
-  ; GUEST 2
-  Data.LOAD.Binary "&guest2" 0x32300000 /Name Guest2
+  Data.LOAD.Elf "&elf2" /NoClear
 )
+
+Data.LOAD.Elf "&elf1"
 
 ; ===================================================================
 ; BREAKPOINTS
@@ -114,7 +112,9 @@ SYStem.CONFIG.AHBAP1.Base DP:0x1C80000
 SYStem.CONFIG.APBAP1.Base DP:0x1C30000
 SYStem.CONFIG.AXIAP1.Base DP:0x1C21000
 
-Register.Set PC 0x32100000 /CORE 0.
+Register.Set T 0
+
+Go
 
 ENDDO
 
