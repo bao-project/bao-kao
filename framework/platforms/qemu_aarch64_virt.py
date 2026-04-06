@@ -24,6 +24,10 @@ from constants import print_log
 
 from generic_platform import generic_emulator
 
+TIMER_FREQ = 40000000 #Hz
+CPU_FREQ = 1000000000 #Hz
+
+
 class qemu_aarch64_virt(generic_emulator):
     def __init__(self, wrkdir):
         super().__init__(wrkdir)
@@ -35,6 +39,8 @@ class qemu_aarch64_virt(generic_emulator):
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
         self.architecture = "aarch64"
         self.irq_flags = {'GIC_version': "GICV3"}
+        self.cpu_freq = CPU_FREQ
+        self.timer_freq = TIMER_FREQ
 
         
         if not os.path.exists(self.firmware_dir):
