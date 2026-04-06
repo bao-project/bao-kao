@@ -23,6 +23,7 @@ from generic import standalone
 
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
 from qemu_aarch64_virt import qemu_aarch64_virt
+from qemu_riscv64_virt import qemu_riscv64_virt
 from tc4dx import tc4dx
 from zcu104 import zcu104
 from s32z270 import s32z270
@@ -33,6 +34,7 @@ from baremetal import baremetal_test
 
 dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
+    "qemu-riscv64-virt": qemu_riscv64_virt,
     "tc4dx": tc4dx,
     "s32z270": s32z270,
     "rh850-u2a16" : rh850,
@@ -423,7 +425,7 @@ if __name__ == "__main__":
     )
 
     if tf.build_firmware:
-        platform.build_firmware(interrupt_flags)
+        platform.build_firmware(run_bin, interrupt_flags)
 
     tf.launch_test(run_bin, interrupt_flags, tf.test_config['setup'], tf.test_config['echo'], platform)
     tf.cleanup()
