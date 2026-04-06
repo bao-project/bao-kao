@@ -86,7 +86,7 @@ class qemu_aarch64_virt(generic_emulator):
         self.toolchain = toolchain_instance.install()
         print_log("SUCCESS", f"Toolchain set up successfully!", tab_level=2)
 
-    def build_firmware(self, interrupt_flags=None):
+    def build_firmware(self, run_bin=None, interrupt_flags=None):
         self.build_toolchain()
 
         if interrupt_flags:

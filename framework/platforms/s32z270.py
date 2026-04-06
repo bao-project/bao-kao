@@ -45,7 +45,7 @@ class s32z270(generic_platform):
         toolchain_instance = arm_none_eabi(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
 
-    def build_firmware(self, interrupt_flags=None):
+    def build_firmware(self, run_bin=None, interrupt_flags=None):
         # self.build_toolchain()
         pass
 

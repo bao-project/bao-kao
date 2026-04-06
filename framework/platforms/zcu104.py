@@ -233,7 +233,7 @@ class zcu104(generic_platform):
         toolchain_instance = aarch64_none_elf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
 
-    def build_firmware(self, interrupt_flags=None):
+    def build_firmware(self, run_bin=None, interrupt_flags=None):
         # self.build_toolchain()
 
         uboot_instance = uboot(self.firmware_dir)
