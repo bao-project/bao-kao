@@ -92,7 +92,7 @@ class baremetal_test(baremetal):
         shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
         print_log("INFO", "Running codegen.py ...", tab_level=1)
-        codegen_dir = os.path.join(bao_tests_abs)
+        codegen_dir = os.path.join(bao_tests_abs, "tests")
         generated_output = os.path.join(tests_baotests_dst, "src", "testf_entry.c")
         self.run_cmd(
             ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],
