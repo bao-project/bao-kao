@@ -32,6 +32,7 @@ from tc4dx import tc4dx
 from zcu104 import zcu104
 from s32z270 import s32z270
 from rh850 import rh850
+from fvp_r import fvp_r
 
 sys.path.append(os.path.join(TF_DIR, "guests"))
 from baremetal  import baremetal_test
@@ -39,6 +40,7 @@ from baremetal  import baremetal_test
 dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
     "qemu-riscv64-virt": qemu_riscv64_virt,
+    "fvp-r": fvp_r,
     "tc4dx": tc4dx,
     "s32z270": s32z270,
     "rh850-u2a16" : rh850,
@@ -66,23 +68,26 @@ class test_framework:
 
     def build_guests(self, platform, interrupt_flags):
 
+        def get_platform_build_flags(flags_cfg, platform_name):
+            if isinstance(flags_cfg, str):
+                return flags_cfg
+            if isinstance(flags_cfg, dict):
+                return flags_cfg.get(platform_name, "")
+            if isinstance(flags_cfg, list):
+                for flags in flags_cfg:
+                    if isinstance(flags, dict) and platform_name in flags:
+                        return flags[platform_name]
+            return ""
+
         for guest in self.test_config['guests']:
             print_log("INFO", f"Building guest:", tab_level=1)
-
-            def get_platform_build_flags(list_flags, platform_name, guest_name):
-                for flags in list_flags:
-                    if platform_name in flags:
-                        return flags[platform_name]
-                return ""
-
 
             if self.run_type == "benchmarks":
                 guest_type = "baremetal_benchmark"
                 guest_name = guest[list(guest.keys())[0]][0]['bin_name']
                 building_flags = get_platform_build_flags(
-                    guest[list(guest.keys())[0]][1]['flags'],
-                    self.test_config['platform'],
-                    guest_name
+                    guest[list(guest.keys())[0]][1].get('flags', ""),
+                    self.test_config['platform']
                 )
 
                 #add run_mode to building flags
@@ -92,7 +97,10 @@ class test_framework:
             else:
                 guest_type = list(guest.keys())[0]
                 guest_name = guest[guest_type][0]['bin_name']
-                building_flags = guest[guest_type][1]['flags']
+                building_flags = get_platform_build_flags(
+                    guest[guest_type][1].get('flags', ""),
+                    self.test_config['platform']
+                )
 
             print_log("INFO", f"Building guest_type: {guest_type}", tab_level=2)
             print_log("INFO", f"Building bin_name: {guest_name}", tab_level=2)
@@ -263,6 +271,38 @@ class test_framework:
             with open(config_path, "r") as f:
                 return yaml.safe_load(f)
 
+        def resolve_setup_guests(setups_cfg, setup_name):
+            if isinstance(setups_cfg, dict):
+                for setup_map in setups_cfg.values():
+                    if isinstance(setup_map, dict) and setup_name in setup_map:
+                        return setup_map[setup_name]
+                if setup_name in setups_cfg:
+                    return setups_cfg[setup_name]
+                return []
+
+            if isinstance(setups_cfg, list):
+                for setup_entry in setups_cfg:
+                    if isinstance(setup_entry, dict) and setup_name in setup_entry:
+                        return setup_entry[setup_name]
+
+                for setup_entry in setups_cfg:
+                    if not isinstance(setup_entry, dict):
+                        continue
+                    setup_guest_lists = list(setup_entry.values())
+                    if len(setup_guest_lists) != 1:
+                        continue
+                    setup_guests = setup_guest_lists[0]
+                    if (
+                        isinstance(setup_guests, list)
+                        and len(setup_guests) == 1
+                        and isinstance(setup_guests[0], dict)
+                        and setup_name in setup_guests[0]
+                    ):
+                        return setup_guests
+                return []
+
+            return []
+
 
         list_tests = ""
         list_suites = ""
@@ -273,21 +313,40 @@ class test_framework:
         # parse tests file
         if args.test != " ":
             self.run_type = "tests"
-            config_file = os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml"))
-            test_config = read_config(config_file)
+            tests_config_candidates = [
+                os.path.abspath(os.path.join(CUR_DIR, "../../tests/tests_config.yaml")),
+                os.path.abspath(os.path.join(CUR_DIR, "tests_config.yaml")),
+                os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml")),
+            ]
 
+            selected_tests_config = None
+            for candidate in tests_config_candidates:
+                if not os.path.exists(candidate):
+                    continue
+
+                candidate_cfg = read_config(candidate) or {}
+                candidate_guests = resolve_setup_guests(candidate_cfg.get("setups", {}), args.setup)
+                if candidate_guests:
+                    selected_tests_config = candidate_cfg
+                    config_file = candidate
+                    list_guests = candidate_guests
+                    break
+
+            if selected_tests_config is None:
+                for candidate in tests_config_candidates:
+                    if os.path.exists(candidate):
+                        selected_tests_config = read_config(candidate) or {}
+                        config_file = candidate
+                        break
+
+            test_config = selected_tests_config if selected_tests_config is not None else {}
             tests_cfg = test_config.get("tests", {})
             test_entry = tests_cfg.get(args.test, [])
             list_tests = test_entry[0].get("list_tests", "") if len(test_entry) > 0 else ""
             list_suites = test_entry[1].get("list_suites", "") if len(test_entry) > 1 else ""
 
-            setups_cfg = test_config.get("setups", {})
-            list_guests = {}
-
-            for group_name, setup_map in setups_cfg.items():
-                if args.setup in setup_map:
-                    list_guests = setup_map[args.setup]
-                    break
+            if not list_guests:
+                list_guests = resolve_setup_guests(test_config.get("setups", {}), args.setup)
 
 
         # parse benchmark file
@@ -334,31 +393,35 @@ class test_framework:
         guests_bins = os.path.join(self.wrkdir, "guests", "build")
 
         if platform.is_emulated:
-            proc, stderr_path, errf, serial_ports = platform.launch_test(
-                run_bin, irq_flags, guests_bins, setup, self.hypervisor
-            )
-            # time.sleep(1)
+            try:
+                proc, stderr_path, errf, serial_ports = platform.launch_test(
+                    run_bin, irq_flags, guests_bins, setup, self.hypervisor
+                )
+                # time.sleep(1)
 
-            if proc.poll() is not None:
-                raise RuntimeError("QEMU died before serial connection")
-            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
+                if proc.poll() is not None:
+                    raise RuntimeError("QEMU died before serial connection")
+                log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
 
-            logger_inst.wait_for_finish(log_threads)
+                logger_inst.wait_for_finish(log_threads)
 
-            if proc != None:
-                parent = psutil.Process(proc.pid)
-                children = parent.children(recursive=True)
-                for child in children:
+                if proc != None:
                     try:
-                        child.terminate()
-                        child.wait()
-                    except psutil.NoSuchProcess:
-                        pass
-                try:
-                    parent.terminate()
-                    parent.wait()
-                except psutil.NoSuchProcess:
-                    pass
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    except Exception:
+                        proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except Exception:
+                            proc.kill()
+                        proc.wait(timeout=5)
+            finally:
+                platform_cleanup = getattr(platform, "cleanup", None)
+                if callable(platform_cleanup):
+                    platform_cleanup()
 
         else:
             serial_ports = platform.get_serial_ports()
