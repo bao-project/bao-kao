@@ -54,7 +54,9 @@ class s32z270(generic_platform):
 
     def launch_test(self, run_bin, interrupt_flags, guest_bins = None, guest_os="baremetal", hypervisor=None):
         launch_script_path = os.path.join(cur_dir, "s32z270/t32.cmm")
-        cmd = ["t32marm", "-s", launch_script_path]
+        windows_script_path = os.path.join(cur_dir, "s32z270/windows.cmm")
+
+        cmd = ["t32marm", "-s", launch_script_path, windows_script_path]
 
         if hypervisor is not None and hypervisor != "standalone":
             run_elf = run_bin.replace(".bin", ".elf")

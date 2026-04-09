@@ -1,6 +1,6 @@
 ; First binary elf passed as argument will be loaded lastly, therefore will be the one used for
 ; the entrypoint
-ENTRY &elf1 &elf2 &elf3
+ENTRY &script &elf1 &elf2 &elf3
 &thumbBit="0"
 &spltLckBit="1"
 &rtu="0"
@@ -95,7 +95,7 @@ Data.LOAD.Elf "&elf1"
 ; ===================================================================
 ; WINDOWS SETUP
 ; ===================================================================
-Do "platforms/s32z270/windows.cmm"
+Do "&script"
 
 ; ===================================================================
 ; Variables Watch
