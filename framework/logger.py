@@ -277,6 +277,8 @@ class TestLogger:
             thread.join()
 
     def listener(self, ser_port, echo, is_benchmark=False):
+        self.serial_port = ser_port
+
         def decode_and_replace(res):
             replacements = [
                 ('\r\n', '\n'),
