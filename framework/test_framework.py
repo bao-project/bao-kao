@@ -9,16 +9,23 @@ import subprocess
 import logger
 import psutil
 
-cur_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+# Root path anchors
+CUR_DIR        = os.path.dirname(os.path.abspath(__file__))
+TF_DIR         = CUR_DIR                                                # tests/tf/framework/
+TF_ROOT        = os.path.abspath(os.path.join(CUR_DIR, "../"))          # tests/tf/
+TESTS_DIR      = os.path.abspath(os.path.join(CUR_DIR, "../../tests"))  # tests/tests
+BENCHS_DIR     = os.path.abspath(os.path.join(CUR_DIR, "../../benchs")) # tests/benchs
+HYPERVISOR_DIR = os.path.abspath(os.path.join(CUR_DIR, "../../../"))    # bao-hypervisor/
+
+# Test Framework imports
+sys.path.append(TF_ROOT)
 from constants import print_log
 
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "hypervisor")))
+sys.path.append(os.path.join(TF_DIR, "hypervisor"))
 from bao import bao
 from generic import standalone
 
-
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
+sys.path.append(os.path.join(TF_DIR, "platforms"))
 from qemu_aarch64_virt import qemu_aarch64_virt
 from qemu_riscv64_virt import qemu_riscv64_virt
 from tc4dx import tc4dx
@@ -26,8 +33,8 @@ from zcu104 import zcu104
 from s32z270 import s32z270
 from rh850 import rh850
 
-sys.path.append(os.path.abspath(os.path.join(cur_dir, "guests")))
-from baremetal import baremetal_test
+sys.path.append(os.path.join(TF_DIR, "guests"))
+from baremetal  import baremetal_test
 
 dict_platforms = {
     "qemu-aarch64-virt": qemu_aarch64_virt,
@@ -42,19 +49,18 @@ dict_guests = {
     "baremetal" : baremetal_test,
 }
 
-benchmarks_path = os.path.abspath(os.path.join(cur_dir, "../../bao-benchmarks"))
-IS_BENCHMARKS_AVAILABLE = False
-if os.path.exists(benchmarks_path) and os.listdir(benchmarks_path):
-    IS_BENCHMARKS_AVAILABLE = True
-    sys.path.append(os.path.abspath(os.path.join(benchmarks_path, "guests")))
+# Optionally register benchmark guest if the bao-benchmarks submodule is populated
+if os.path.exists(BENCHS_DIR) and os.listdir(BENCHS_DIR):
+    sys.path.append(os.path.join(BENCHS_DIR, "guests"))
     from baremetal_benchmark import baremetal_benchmark
     dict_guests["baremetal_benchmark"] = baremetal_benchmark
 
 class test_framework:
-    def __init__(self, wkrdir):
-        self.tests_srcs = os.path.abspath(os.path.join(cur_dir, "../../tests"))
-        self.bao_tests_dir = os.path.abspath(os.path.join(cur_dir, "../tests"))
-        self.bao_hypervisor_dir = os.path.abspath(os.path.join(cur_dir, "../../../"))
+    def __init__(self, wrkdir):
+        self.wrkdir = wrkdir
+        self.tests_srcs = TESTS_DIR
+        self.bao_tests_dir = TF_ROOT
+        self.bao_hypervisor_dir = HYPERVISOR_DIR
         self.disable_logger = False
         self.list_obj = []
 
@@ -102,7 +108,7 @@ class test_framework:
             benchmark = self.test_config["benchmark"]
 
             guest_instance = guest_class(
-                wrkdir, list_tests, list_suites, benchmark,
+                self.wrkdir, list_tests, list_suites, benchmark,
                 tests_srcs=self.tests_srcs,
                 bao_tests_path=self.bao_tests_dir,
                 bin_name = bin_name,
@@ -247,7 +253,7 @@ class test_framework:
             if args.ipic != "":
                 irq_flags = {'IPIC': args.ipic}
 
-        config_file = os.path.abspath(os.path.join(cur_dir, "test_config.yaml"))
+        config_file = os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml"))
 
         def read_config(config_path):
             with open(config_path, "r") as f:
@@ -263,7 +269,7 @@ class test_framework:
         # parse tests file
         if args.test != " ":
             self.run_type = "tests"
-            config_file = os.path.abspath(os.path.join(cur_dir, "test_config.yaml"))
+            config_file = os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml"))
             test_config = read_config(config_file)
 
             tests_cfg = test_config.get("tests", {})
@@ -283,7 +289,7 @@ class test_framework:
         # parse benchmark file
         if args.benchmark != " ":
             self.run_type = "benchmarks"
-            config_file = os.path.abspath(os.path.join(cur_dir, "benchmarks_config.yaml"))
+            config_file = os.path.abspath(os.path.join(CUR_DIR, "benchmarks_config.yaml"))
             test_config = read_config(config_file)
             list_setups = test_config.get("benchmarks", {})
             for setup in list_setups:
@@ -294,16 +300,11 @@ class test_framework:
 
         bao_config_path = ""
         if self.run_type == "benchmarks":
-             bao_config_path = os.path.join(benchmarks_path, "tests_configurations")
+            bao_config_path = os.path.join(BENCHS_DIR, "configs", args.benchmark)
         elif self.run_type == "tests":
-            bao_config_path = os.path.join(cur_dir, f"../../{self.run_type}/tests_configurations")
-        print(f"bao_config_path: {bao_config_path}")
-
-        if self.run_type is not None:
-            if self.run_type == "tests":
-                bao_config_path = os.path.join(bao_config_path, args.setup)
-            elif self.run_type == "benchmarks":
-                bao_config_path = os.path.join(bao_config_path, args.benchmark)
+            bao_config_path = os.path.join(TESTS_DIR, "configs", args.setup)
+        else:
+            bao_config_path = ""
 
         self.build_firmware = not args.no_firmware_build
         self.hypervisor = args.hypervisor
@@ -325,8 +326,7 @@ class test_framework:
     def launch_test(self, run_bin, irq_flags, setup, echo, platform):
         logger_inst = logger.TestLogger(platform.cpu_freq, platform.timer_freq)
 
-        guests_bins = os.path.join(cur_dir, "wrkdir", "guests", "build")
-        guests_bins = os.path.abspath(guests_bins)
+        guests_bins = os.path.join(self.wrkdir, "guests", "build")
 
         if platform.is_emulated:
             proc, stderr_path, errf, serial_ports = platform.launch_test(
@@ -378,28 +378,26 @@ class test_framework:
 
 
     def cleanup(self):
-        guests_dir = os.path.join(cur_dir, "wrkdir", "guests")
+        guests_dir = os.path.join(CUR_DIR, "wrkdir", "guests")
         if os.path.exists(guests_dir):
             print("removing guests build artifacts at:", guests_dir)
             shutil.rmtree(guests_dir)
 
 
-if __name__ == "__main__":
-    wrkdir = os.getcwd()
-    wrkdir += "/wrkdir"
-    if not os.path.exists(wrkdir):
-        os.makedirs(wrkdir)
+def main():
+    wrkdir = os.path.join(os.getcwd(), "wrkdir")
+    os.makedirs(wrkdir, exist_ok=True)
 
     tf = test_framework(wrkdir)
-    print_log("INFO", f"Parsing test configuration...", tab_level=0)
+
+    print_log("INFO", "Parsing test configuration...", tab_level=0)
     tf.parse_args()
-    print_log("SUCCESS", f"Parsed test configuration.", tab_level=0)
+    print_log("SUCCESS", "Parsed test configuration.", tab_level=0)
 
     bao_cfg_path_abs = os.path.abspath(tf.test_config['bao_config'])
-
     tf.cleanup()
 
-    print_log("INFO", f"Setting up platform...", tab_level=0)
+    print_log("INFO", "Setting up platform...", tab_level=0)
     platform_class = dict_platforms.get(tf.test_config['platform'])
     platform = platform_class(wrkdir)
     platform.setup_platform()
@@ -411,18 +409,18 @@ if __name__ == "__main__":
     else:
         interrupt_flags = tf.test_config['irq_flags']
 
-    print_log("INFO", f"Building guests...", tab_level=0)
+    print_log("INFO", "Building guests...", tab_level=0)
     tf.build_guests(platform, interrupt_flags)
 
     print_log("INFO", f"Building run image [{tf.hypervisor}]...", tab_level=0)
-    run_bin, bin_name, elf_name = tf.build_run_bin(
-        wrkdir,
-        bao_cfg_path_abs,
-        platform
-    )
+    run_bin, bin_name, elf_name = tf.build_run_bin(wrkdir, bao_cfg_path_abs, platform)
 
     if tf.build_firmware:
         platform.build_firmware(run_bin, interrupt_flags)
 
     tf.launch_test(run_bin, interrupt_flags, tf.test_config['setup'], tf.test_config['echo'], platform)
     tf.cleanup()
+
+
+if __name__ == "__main__":
+    main()
