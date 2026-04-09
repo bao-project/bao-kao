@@ -7,10 +7,7 @@ import yaml
 import shutil
 import subprocess
 import logger
-import subprocess
 import psutil
-from constants import print_log
-import sys
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
