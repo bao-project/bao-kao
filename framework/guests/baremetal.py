@@ -2,6 +2,7 @@
 # Copyright (c) Bao Project and Contributors. All rights reserved.
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -41,8 +42,10 @@ class baremetal:
 
     def run_cmd(self, cmd, cwd=None, env=None):
         p = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # p = subprocess.run(cmd, cwd=cwd, env=env, text=True)
         if p.returncode != 0:
+            details = p.stderr.strip() or p.stdout.strip()
+            if details:
+                raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{details}")
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
     def fetch_sources(self):
@@ -112,17 +115,22 @@ class baremetal_test(baremetal):
         ]
 
         if self.list_suites:
-            make_cmd.append(f'SUITES="{self.list_suites}"')
+            suites = str(self.list_suites).strip()
+            if suites:
+                make_cmd.append(f"SUITES={suites}")
         if self.list_tests:
-            make_cmd.append(f'TESTS="{self.list_tests}"')
-        if platform in ["fvp-a", "fvp-r"]:
-            make_cmd.append("BAREMETAL_PARAMS=MEM_BASE=0x10000000")
+            tests = str(self.list_tests).strip()
+            if tests:
+                make_cmd.append(f"TESTS={tests}")
 
         if arch == "aarch64" and irq_flags:
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
         
-        # make_cmd.append(self.build_flags)
+        if self.build_flags:
+            build_flags = shlex.split(str(self.build_flags).strip())
+            make_cmd.extend(build_flags)
+
         
 
         self.run_cmd(make_cmd, cwd=self.srcs_dir)
