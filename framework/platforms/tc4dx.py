@@ -23,6 +23,7 @@ class tc4dx:
         # self.git_repo = "https://git.qemu.org/git/qemu.git"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/tricore_elf"
+        self.toolchain_prefix = "tricore-elf-"
         self.architecture = "tc4"
 
         

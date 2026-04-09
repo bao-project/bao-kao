@@ -37,6 +37,7 @@ class qemu_aarch64_virt(generic_emulator):
         self.git_repo = "https://git.qemu.org/git/qemu.git"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
+        self.toolchain_prefix = "aarch64-none-elf-"
         self.architecture = "aarch64"
         self.irq_flags = {'GIC_version': "GICV3"}
         self.cpu_freq = CPU_FREQ
@@ -87,8 +88,6 @@ class qemu_aarch64_virt(generic_emulator):
         print_log("SUCCESS", f"Toolchain set up successfully!", tab_level=2)
 
     def build_firmware(self, run_bin=None, interrupt_flags=None):
-        self.build_toolchain()
-
         if interrupt_flags:
             gic_version = interrupt_flags.get("GIC_version", "GICV2")
 

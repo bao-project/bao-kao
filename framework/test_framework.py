@@ -228,6 +228,10 @@ class test_framework:
                     help="Skips firmware build phase, assuming pre-built firmware is available. This can be useful for development iterations when firmware changes are not needed.",
                     default=False)
 
+        parser.add_argument("--no_toolchain_build", action="store_true",
+                    help="Skips toolchain download/build phase. The toolchain is expected to be available in the system PATH.",
+                    default=False)
+
         parser.add_argument("-hypervisor", "--hypervisor",
                         required=False,
                         help="Used to define if the Bao hypervisor build phase should be skipped, assuming a pre-built hypervisor binary is available. This can be useful for development iterations when hypervisor changes are not needed.",
@@ -307,6 +311,7 @@ class test_framework:
             bao_config_path = ""
 
         self.build_firmware = not args.no_firmware_build
+        self.build_toolchain = not args.no_toolchain_build
         self.hypervisor = args.hypervisor
         self.hypervisor_srcs = args.hypervisor_srcs
 
@@ -401,13 +406,13 @@ def main():
     platform_class = dict_platforms.get(tf.test_config['platform'])
     platform = platform_class(wrkdir)
     platform.setup_platform()
-    print_log("INFO", f"Building firmware...", tab_level=1)
-    platform.build_toolchain()
-
-    if tf.test_config['irq_flags'] == {}:
-        interrupt_flags = platform.irq_flags
+    if tf.build_toolchain:
+        platform.build_toolchain()
     else:
-        interrupt_flags = tf.test_config['irq_flags']
+        platform.toolchain = platform.toolchain_prefix
+        print_log("INFO", f"Skipping toolchain build, expecting '{platform.toolchain_prefix}' to be available in the environment.", tab_level=1)
+
+    interrupt_flags = tf.test_config['irq_flags'] or platform.irq_flags
 
     print_log("INFO", "Building guests...", tab_level=0)
     tf.build_guests(platform, interrupt_flags)

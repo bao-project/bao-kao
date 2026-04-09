@@ -23,6 +23,7 @@ class rh850:
         # self.git_repo = "https://git.qemu.org/git/qemu.git"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/v850_elf"
+        self.toolchain_prefix = "v850-elf-"
         self.architecture = "rh850"
 
         

@@ -29,6 +29,7 @@ class s32z270(generic_platform):
         self.firmware_dir = f"{wrkdir}/platforms/firmware"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/arm_none_eabi"
+        self.toolchain_prefix = "arm-none-eabi-"
         self.architecture = "aarch32"
         self.irq_flags = {},
         self.cpu_freq = CPU_FREQ
@@ -50,7 +51,7 @@ class s32z270(generic_platform):
         pass
 
     def get_serial_ports(self):
-        return ["/dev/ttyUSB1"]
+        return ["/dev/ttyUSB0"]
 
     def launch_test(self, run_bin, interrupt_flags, guest_bins = None, guest_os="baremetal", hypervisor=None):
         launch_script_path = os.path.join(cur_dir, "s32z270/t32.cmm")

@@ -34,6 +34,7 @@ class qemu_riscv64_virt(generic_emulator):
         self.qemu_version = "10.0.2"
         self.git_repo = "https://github.com/qemu/qemu.git"
         self.toolchain = f"{wrkdir}/toolchains"
+        self.toolchain_prefix = "riscv64-unknown-elf-"
         self.architecture = "riscv64"
         self.irq_flags = {}
         self.cpu_freq = CPU_FREQ

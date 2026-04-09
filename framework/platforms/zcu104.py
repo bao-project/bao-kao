@@ -218,6 +218,7 @@ class zcu104(generic_platform):
         self.prebuilt_firmware = "https://github.com/Xilinx/soc-prebuilt-firmware.git"
         self.prebuilt_firmware_version = "xlnx_rel_v2023.1"
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
+        self.toolchain_prefix = "aarch64-none-elf-"
         self.architecture = "aarch64"
         self.irq_flags = {'GIC_version': "GICV3"}
 
