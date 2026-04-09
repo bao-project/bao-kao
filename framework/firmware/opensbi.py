@@ -25,7 +25,7 @@ class opensbi:
         }
 
     def run_command(self, command, cwd=None, env=None):
-        result = subprocess.run(command, cwd=cwd, env=env)
+        result = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode != 0:
             print(f"[ERROR] Command '{' '.join(command)}' failed")
             raise Exception(f"Command '{' '.join(command)}' failed")
