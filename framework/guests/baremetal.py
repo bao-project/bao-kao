@@ -29,7 +29,7 @@ class baremetal:
         self.benchmark = benchmark
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "a5fd2e45e0ff75fc372f63720dba63bb5577f071"
+        self.git_rev = "7119db6498542c85cba49c6b38bf0097c72572a3"
 
         if local_repo_path:
             self.use_local_repo = True
@@ -127,11 +127,13 @@ class baremetal_test(baremetal):
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
         
-        if self.build_flags:
-            build_flags = shlex.split(str(self.build_flags).strip())
-            make_cmd.extend(build_flags)
+        generic_flags = self.build_flags["generic_flags"]
+        cpu_num = self.build_flags.get("cpu_num")
 
-        
+        if generic_flags:
+            make_cmd.extend(shlex.split(generic_flags))
+        if cpu_num:
+            make_cmd.append(f"NUM_CPUS={cpu_num}")
 
         self.run_cmd(make_cmd, cwd=self.srcs_dir)
 

@@ -68,16 +68,43 @@ class test_framework:
 
     def build_guests(self, platform, interrupt_flags):
 
+        def normalize_guest_flags(flags_entry):
+            if isinstance(flags_entry, dict):
+                generic_flags = flags_entry.get("generic_flags", "")
+                if generic_flags is None:
+                    generic_flags = ""
+                elif not isinstance(generic_flags, str):
+                    generic_flags = str(generic_flags)
+
+                return {
+                    "generic_flags": generic_flags,
+                    "cpu_num": flags_entry.get("cpu_num"),
+                }
+
+            if isinstance(flags_entry, str):
+                return {
+                    "generic_flags": flags_entry,
+                    "cpu_num": None,
+                }
+
+            return {
+                "generic_flags": "",
+                "cpu_num": None,
+            }
+
         def get_platform_build_flags(flags_cfg, platform_name):
-            if isinstance(flags_cfg, str):
-                return flags_cfg
             if isinstance(flags_cfg, dict):
-                return flags_cfg.get(platform_name, "")
+                if "generic_flags" in flags_cfg or "cpu_num" in flags_cfg:
+                    return normalize_guest_flags(flags_cfg)
+                return normalize_guest_flags(flags_cfg.get(platform_name))
+
             if isinstance(flags_cfg, list):
-                for flags in flags_cfg:
-                    if isinstance(flags, dict) and platform_name in flags:
-                        return flags[platform_name]
-            return ""
+                for item in flags_cfg:
+                    if isinstance(item, dict) and platform_name in item:
+                        return normalize_guest_flags(item[platform_name])
+                return normalize_guest_flags("")
+
+            return normalize_guest_flags(flags_cfg)
 
         for guest in self.test_config['guests']:
             print_log("INFO", f"Building guest:", tab_level=1)
@@ -85,20 +112,21 @@ class test_framework:
             if self.run_type == "benchmarks":
                 guest_type = "baremetal_benchmark"
                 guest_name = guest[list(guest.keys())[0]][0]['bin_name']
-                building_flags = get_platform_build_flags(
+                platform_flags = get_platform_build_flags(
                     guest[list(guest.keys())[0]][1].get('flags', ""),
                     self.test_config['platform']
                 )
+                building_flags = platform_flags["generic_flags"]
 
                 #add run_mode to building flags
                 if self.hypervisor == "standalone":
-                    building_flags += " STANDALONE=y"
+                    building_flags = f"{building_flags} STANDALONE=y".strip()
 
             else:
                 guest_type = list(guest.keys())[0]
                 guest_name = guest[guest_type][0]['bin_name']
                 building_flags = get_platform_build_flags(
-                    guest[guest_type][1].get('flags', ""),
+                    guest[guest_type][1].get('flags', {}),
                     self.test_config['platform']
                 )
 
@@ -272,33 +300,51 @@ class test_framework:
                 return yaml.safe_load(f)
 
         def resolve_setup_guests(setups_cfg, setup_name):
+            def is_guest_attr_list(value):
+                return (
+                    isinstance(value, list)
+                    and all(isinstance(item, dict) for item in value)
+                    and any(("bin_name" in item or "flags" in item) for item in value)
+                )
+
+            def as_guest_list(found_key, found_value):
+                if is_guest_attr_list(found_value):
+                    return [{found_key: found_value}]
+                if isinstance(found_value, list):
+                    return found_value
+                return []
+
             if isinstance(setups_cfg, dict):
-                for setup_map in setups_cfg.values():
-                    if isinstance(setup_map, dict) and setup_name in setup_map:
-                        return setup_map[setup_name]
                 if setup_name in setups_cfg:
-                    return setups_cfg[setup_name]
+                    return as_guest_list(setup_name, setups_cfg[setup_name])
+
+                for setup_map in setups_cfg.values():
+                    if not isinstance(setup_map, dict):
+                        continue
+                    if setup_name in setup_map:
+                        return as_guest_list(setup_name, setup_map[setup_name])
+                    for nested_setups in setup_map.values():
+                        if not isinstance(nested_setups, list):
+                            continue
+                        for nested_setup in nested_setups:
+                            if isinstance(nested_setup, dict) and setup_name in nested_setup:
+                                return as_guest_list(setup_name, nested_setup[setup_name])
                 return []
 
             if isinstance(setups_cfg, list):
                 for setup_entry in setups_cfg:
                     if isinstance(setup_entry, dict) and setup_name in setup_entry:
-                        return setup_entry[setup_name]
+                        return as_guest_list(setup_name, setup_entry[setup_name])
 
                 for setup_entry in setups_cfg:
                     if not isinstance(setup_entry, dict):
                         continue
-                    setup_guest_lists = list(setup_entry.values())
-                    if len(setup_guest_lists) != 1:
-                        continue
-                    setup_guests = setup_guest_lists[0]
-                    if (
-                        isinstance(setup_guests, list)
-                        and len(setup_guests) == 1
-                        and isinstance(setup_guests[0], dict)
-                        and setup_name in setup_guests[0]
-                    ):
-                        return setup_guests
+                    for nested_setups in setup_entry.values():
+                        if not isinstance(nested_setups, list):
+                            continue
+                        for nested_setup in nested_setups:
+                            if isinstance(nested_setup, dict) and setup_name in nested_setup:
+                                return as_guest_list(setup_name, nested_setup[setup_name])
                 return []
 
             return []
@@ -314,8 +360,8 @@ class test_framework:
         if args.test != " ":
             self.run_type = "tests"
             tests_config_candidates = [
-                os.path.abspath(os.path.join(CUR_DIR, "../../tests/tests_config.yaml")),
                 os.path.abspath(os.path.join(CUR_DIR, "tests_config.yaml")),
+                os.path.abspath(os.path.join(CUR_DIR, "../../tests/tests_config.yaml")),
                 os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml")),
             ]
 
