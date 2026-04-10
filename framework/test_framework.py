@@ -357,48 +357,25 @@ class test_framework:
         self.run_type = None
 
         # parse tests file
-        if args.test != " ":
+        if args.test.strip():
             self.run_type = "tests"
-            tests_config_candidates = [
-                os.path.abspath(os.path.join(CUR_DIR, "tests_config.yaml")),
-                os.path.abspath(os.path.join(CUR_DIR, "../../tests/tests_config.yaml")),
-                os.path.abspath(os.path.join(CUR_DIR, "test_config.yaml")),
-            ]
+            config_file = os.path.abspath(os.path.join(TESTS_DIR, "tests_config.yaml"))
 
-            selected_tests_config = None
-            for candidate in tests_config_candidates:
-                if not os.path.exists(candidate):
-                    continue
+            test_config = read_config(config_file) if os.path.exists(config_file) else {}
+            test_config = test_config or {}
 
-                candidate_cfg = read_config(candidate) or {}
-                candidate_guests = resolve_setup_guests(candidate_cfg.get("setups", {}), args.setup)
-                if candidate_guests:
-                    selected_tests_config = candidate_cfg
-                    config_file = candidate
-                    list_guests = candidate_guests
-                    break
+            list_guests = resolve_setup_guests(test_config.get("setups", {}), args.setup)
 
-            if selected_tests_config is None:
-                for candidate in tests_config_candidates:
-                    if os.path.exists(candidate):
-                        selected_tests_config = read_config(candidate) or {}
-                        config_file = candidate
-                        break
-
-            test_config = selected_tests_config if selected_tests_config is not None else {}
             tests_cfg = test_config.get("tests", {})
             test_entry = tests_cfg.get(args.test, [])
+
             list_tests = test_entry[0].get("list_tests", "") if len(test_entry) > 0 else ""
             list_suites = test_entry[1].get("list_suites", "") if len(test_entry) > 1 else ""
-
-            if not list_guests:
-                list_guests = resolve_setup_guests(test_config.get("setups", {}), args.setup)
-
 
         # parse benchmark file
         if args.benchmark != " ":
             self.run_type = "benchmarks"
-            config_file = os.path.abspath(os.path.join(CUR_DIR, "benchmarks_config.yaml"))
+            config_file = os.path.abspath(os.path.join(BENCHS_DIR, "benchmarks_config.yaml"))
             test_config = read_config(config_file)
             list_setups = test_config.get("benchmarks", {})
             for setup in list_setups:
