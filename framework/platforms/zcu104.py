@@ -32,6 +32,9 @@ import subprocess
 import sys
 import textwrap
 
+TIMER_FREQ = 100000000 #Hz
+CPU_FREQ = 1200000000 #Hz
+
 def generate_boot_txt(
     mode: str,
     artifact_route: str,
@@ -220,7 +223,9 @@ class zcu104(generic_platform):
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
         self.toolchain_prefix = "aarch64-none-elf-"
         self.architecture = "aarch64"
-        self.irq_flags = {'GIC_version': "GICV3"}
+        self.irq_flags = {'GIC_version': "GICV2"}
+        self.cpu_freq = CPU_FREQ
+        self.timer_freq = TIMER_FREQ
 
         
         if not os.path.exists(self.firmware_dir):
