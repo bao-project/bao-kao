@@ -26,7 +26,7 @@ from generic_platform import generic_emulator
 
 TIMER_FREQ = 40000000 #Hz
 CPU_FREQ = 1000000000 #Hz
-
+GIC_VERSIONS = ["GICV3", "GICV2"]
 
 class qemu_aarch64_virt(generic_emulator):
     def __init__(self, wrkdir):
@@ -39,11 +39,10 @@ class qemu_aarch64_virt(generic_emulator):
         self.toolchain = f"{wrkdir}/toolchains/aarch64-none-elf"
         self.toolchain_prefix = "aarch64-none-elf-"
         self.architecture = "aarch64"
-        self.irq_flags = {'GIC_version': "GICV3"}
+        self.gic = GIC_VERSIONS[0]
         self.cpu_freq = CPU_FREQ
         self.timer_freq = TIMER_FREQ
 
-        
         if not os.path.exists(self.firmware_dir):
             os.makedirs(self.firmware_dir)
 
@@ -52,9 +51,9 @@ class qemu_aarch64_virt(generic_emulator):
         is_installed = False
         if(path is not None):
             is_installed = True
-        
+            print_log("INFO", f"QEMU {self.qemu_version} is already installed", tab_level=1)
+
         if not is_installed:
-            # print("[INFO] QEMU not found or wrong version. Installing...")
             print_log("INFO", f"QEMU not found or wrong version. Installing...", tab_level=1)
             if not os.path.exists(self.srcs_dir):
                os.makedirs(self.srcs_dir)
@@ -77,15 +76,15 @@ class qemu_aarch64_virt(generic_emulator):
             print_log("INFO", f"Installing QEMU (sudo may prompt for password)...", tab_level=1)
             super().run_command(["sudo", "make", "install"],
                         cwd=self.srcs_dir)
-    
-        print_log("SUCCESS", f"QEMU {self.qemu_version} installed successfully!", tab_level=1)
-            
+
+            print_log("SUCCESS", f"QEMU {self.qemu_version} installed successfully!", tab_level=1)
+
     def build_toolchain(self):
-        print_log("INFO", f"Setting up toolchain...", tab_level=2)
+        print_log("INFO", f"Setting up toolchain...", tab_level=1)
         host_architecture = subprocess.check_output(["uname", "-m"]).decode().strip()
         toolchain_instance = aarch64_none_elf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
-        print_log("SUCCESS", f"Toolchain set up successfully!", tab_level=2)
+        print_log("SUCCESS", f"Toolchain set up successfully!", tab_level=1)
 
     def build_firmware(self, run_bin=None, interrupt_flags=None):
         if interrupt_flags:
@@ -93,7 +92,7 @@ class qemu_aarch64_virt(generic_emulator):
 
         uboot_instance = uboot(self.firmware_dir)
         uboot_bin = uboot_instance.build("qemu-aarch64-virt", self.toolchain)
-    
+
         atf_instance = atf(self.firmware_dir)
         atf_instance.build("qemu-aarch64-virt", uboot_bin, self.toolchain, gic_version)
         atf_instance.install("qemu-aarch64-virt", self.firmware_dir)

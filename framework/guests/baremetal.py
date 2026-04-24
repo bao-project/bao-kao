@@ -12,14 +12,14 @@ sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
 from constants import print_log
 
 class baremetal:
-    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
-                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tf_dir, tests_srcs,
+                 bin_name, build_flags, local_repo_path=None):
         self.wrkdir = wrkdir
         self.guest_name = "baremetal"
 
         self.srcs_dir = os.path.join(wrkdir, "guests", self.guest_name)
+        self.tf_dir = tf_dir
         self.tests_srcs = tests_srcs
-        self.bao_tests_path = bao_tests_path
         self.bin_dir = os.path.join(wrkdir, "guests", "build")
 
         self.list_tests = list_tests
@@ -71,17 +71,16 @@ class baremetal:
         return self.srcs_dir
 
 class baremetal_test(baremetal):
-    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
-                 bao_tests_path, bin_name, build_flags, local_repo_path=None):
-        
-        super().__init__(wrkdir, list_tests, list_suites, benchmark, tests_srcs, 
-                         bao_tests_path, bin_name, build_flags, local_repo_path)
+    def __init__(self, wrkdir, list_tests, list_suites, benchmark, tf_dir, tests_srcs,
+                 bin_name, build_flags, local_repo_path=None):
+
+        super().__init__(wrkdir, list_tests, list_suites, benchmark, tf_dir, tests_srcs,
+                         bin_name, build_flags, local_repo_path)
 
     def build(self, platform, arch, toolchain, irq_flags, log_level="2"):
         self.fetch_sources()
 
         tests_srcs_abs = os.path.abspath(self.tests_srcs)
-        bao_tests_abs = os.path.abspath(self.bao_tests_path)
 
         tests_src_dst = os.path.join(self.srcs_dir, "tests")
         tests_baotests_dst = os.path.join(tests_src_dst)
@@ -95,7 +94,7 @@ class baremetal_test(baremetal):
         shutil.copytree(bao_tests_src_dir, os.path.join(tests_baotests_dst, "src"), dirs_exist_ok=True)
 
         print_log("INFO", "Running codegen.py ...", tab_level=1)
-        codegen_dir = os.path.join(bao_tests_abs, "tests")
+        codegen_dir = os.path.join(self.tf_dir, "utils")
         generated_output = os.path.join(tests_baotests_dst, "src", "testf_entry.c")
         self.run_cmd(
             ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],
@@ -126,7 +125,7 @@ class baremetal_test(baremetal):
         if arch == "aarch64" and irq_flags:
             gic_version = irq_flags.get("GIC_version", "GICV2")
             make_cmd.append(f"GIC_VERSION={gic_version}")
-        
+
         generic_flags = self.build_flags["generic_flags"]
         cpu_num = self.build_flags.get("cpu_num")
 

@@ -31,7 +31,7 @@ class aarch64_none_elf:
         if not os.path.exists(self.toolchain_dir):
             print_log("INFO", f"Downloading {self.download_url}...", tab_level=3)
             urllib.request.urlretrieve(self.download_url, self.toolchain_dir)
-            input(f"[INFO] Download complete. Press Enter to continue...")
+            print_log("INFO", f"Download complete.", tab_level=3)
             print_log("INFO", f"Downloaded to {self.toolchain_dir}", tab_level=3)
             need_extract = True
         else:

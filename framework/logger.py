@@ -88,7 +88,7 @@ class TestLogger:
             while timeout > 0:
                 if self.list_events['event_completed_test'].is_set():
                     return
-                time.sleep(1/1000)
+                time.sleep(1)
                 timeout -= 1
 
             self.list_events['event_stop_listener'].set()
