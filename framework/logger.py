@@ -7,6 +7,13 @@ import subprocess
 import threading
 import time
 import serial
+import os
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "platforms")))
+from generic_platform import FvpTerminalPort
+
 
 
 class TestLogger:
@@ -367,6 +374,22 @@ class TestLogger:
         """
         Validate connection between test framework and platform
         """
+        if isinstance(port, str) and port.startswith("tcp://"):
+            addr = port[len("tcp://"):]
+            host, port_num = addr.rsplit(":", 1)
+
+            deadline = time.time() + 15
+            last_exc = None
+
+            while time.time() < deadline:
+                try:
+                    return FvpTerminalPort(host, int(port_num), timeout=uart_timeout_sec)
+                except OSError as exc:
+                    last_exc = exc
+                    time.sleep(0.2)
+
+            raise RuntimeError(f"Failed to connect to {port}: {last_exc}")
+
         return serial.Serial(str(port), baudrate=baudrate, timeout=uart_timeout_sec)
 
 def scan_pts_ports():

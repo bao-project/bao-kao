@@ -114,11 +114,11 @@ class baremetal_test(baremetal):
         ]
 
         if self.list_suites:
-            suites = str(self.list_suites).strip()
+            suites = " ".join(str(self.list_suites).split())
             if suites:
                 make_cmd.append(f"SUITES={suites}")
         if self.list_tests:
-            tests = str(self.list_tests).strip()
+            tests = " ".join(str(self.list_tests).split())
             if tests:
                 make_cmd.append(f"TESTS={tests}")
 

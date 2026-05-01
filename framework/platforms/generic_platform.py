@@ -2,10 +2,40 @@ import socket
 import subprocess
 import sys
 import os
+import telnetlib
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
 from constants import print_log
+
+
+class FvpTerminalPort:
+    """
+    Small serial-like wrapper for FVP terminal TCP endpoints.
+    Exposes .readline(), .write(), .close(), and .name so logger can
+    treat it like a serial port.
+    """
+
+    def __init__(self, host, port, timeout=1):
+        self.host = host
+        self.port = int(port)
+        self.timeout = timeout
+        self.name = f"tcp://{host}:{port}"
+        self.tn = telnetlib.Telnet(host, int(port), timeout)
+
+    def readline(self):
+        try:
+            return self.tn.read_until(b"\n", self.timeout)
+        except EOFError:
+            return b""
+        except socket.timeout:
+            return b""
+
+    def write(self, data):
+        self.tn.write(data)
+
+    def close(self):
+        self.tn.close()
 
 
 class generic_platform:

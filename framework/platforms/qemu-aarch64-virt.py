@@ -42,6 +42,7 @@ class qemu_aarch64_virt(generic_emulator):
         self.gic = GIC_VERSIONS[0]
         self.cpu_freq = CPU_FREQ
         self.timer_freq = TIMER_FREQ
+        self.platform_name = "qemu-aarch64-virt"
 
         if not os.path.exists(self.firmware_dir):
             os.makedirs(self.firmware_dir)
@@ -87,6 +88,7 @@ class qemu_aarch64_virt(generic_emulator):
         print_log("SUCCESS", f"Toolchain set up successfully!", tab_level=1)
 
     def build_firmware(self, run_bin=None, interrupt_flags=None):
+        gic_version = "GICV3"
         if interrupt_flags:
             gic_version = interrupt_flags.get("GIC_version", "GICV2")
 
@@ -99,10 +101,10 @@ class qemu_aarch64_virt(generic_emulator):
 
     def launch_test(self, run_bin, interrupt_flags, guests_bins, guest_os="baremetal", hypervisor=None):
         if interrupt_flags:
-            gic_version = interrupt_flags.get("GIC_version", "GICV2")
+            gic_version = interrupt_flags.get("GIC_version", "GICV3")
             gic_version = gic_version.replace("GICV", "")
         else:
-            gic_version = "2"
+            gic_version = "3"
 
         if self.check_port_in_use("127.0.0.1", 5555):
             raise RuntimeError("Port 5555 is already in use")
@@ -137,12 +139,12 @@ class qemu_aarch64_virt(generic_emulator):
         ] + extra_serial_args
 
         print_log("INFO", f"Launching QEMU...", tab_level=0)
-        errf = open(qemu_stderr_path, "wb")
+        errf = None
 
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,   # optional, for logging/errors
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1
         )
@@ -155,6 +157,9 @@ class qemu_aarch64_virt(generic_emulator):
                 if proc.poll() is not None:
                     raise RuntimeError(f"QEMU exited with code {proc.returncode}")
                 continue
+
+            with open(qemu_stderr_path, "a", encoding="utf-8") as logf:
+                logf.write(line)
 
             if "char device redirected to " in line:
                 pty = line.split("char device redirected to ", 1)[1].split(" ", 1)[0].strip()

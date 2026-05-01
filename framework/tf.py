@@ -58,7 +58,7 @@ class test_framework:
         self.tests = []
         self.plats = []
 
-    def build_guests(self, platform):
+    def build_guests(self, platform, irq_flags=None):
 
         def normalize_guest_flags(flags_entry):
             if isinstance(flags_entry, dict):
@@ -98,40 +98,62 @@ class test_framework:
 
             return normalize_guest_flags(flags_cfg)
 
+        def resolve_guest_build_options(build_options_cfg, guest_type, platform_name):
+            guest_name = guest_type
+            flags_cfg = {}
+
+            if isinstance(build_options_cfg, dict):
+                bin_name = build_options_cfg.get("bin_name")
+                if isinstance(bin_name, str) and bin_name.strip():
+                    guest_name = bin_name
+
+                if "flags" in build_options_cfg:
+                    flags_cfg = build_options_cfg.get("flags", {})
+                else:
+                    flags_cfg = {key: value for key, value in build_options_cfg.items() if key != "bin_name"}
+            elif isinstance(build_options_cfg, (str, list)):
+                flags_cfg = build_options_cfg
+
+            return guest_name, get_platform_build_flags(flags_cfg, platform_name)
+
+        guest_classes = {
+            "baremetal": baremetal_test,
+        }
+
         for guest in self.guests:
-            print_log("INFO", f"Building guest {guest}:", tab_level=1)
+            guest_type = str(guest).lower()
+            print_log("INFO", f"Building guest {guest_type}:", tab_level=1)
 
-            # if self.run_type == "benchmarks":
-            #     guest_type = "baremetal_benchmark"
-            #     guest_name = guest[list(guest.keys())[0]][0]['bin_name']
-            #     platform_flags = get_platform_build_flags(
-            #         guest[list(guest.keys())[0]][1].get('flags', ""),
-            #         self.test_config['platform']
-            #     )
-            #     building_flags = platform_flags["generic_flags"]
+            vm_cfg = None
+            for vm_entry in self.test_config.get("vms", []):
+                if not isinstance(vm_entry, dict):
+                    continue
+                vm_data = next(iter(vm_entry.values()), {})
+                if not isinstance(vm_data, dict):
+                    continue
+                if str(vm_data.get("name", "")).lower() == guest_type:
+                    vm_cfg = vm_data
+                    break
 
-            #     #add run_mode to building flags
-            #     if self.hypervisor == "standalone":
-            #         building_flags = f"{building_flags} STANDALONE=y".strip()
-
-            # else:
-            #guest_type = list(guest.keys())[0]
-            print("guest_type:", guest)  # Debug print to check guest_type value
-            input("Check guest_type value. Press Enter to continue...")  # Pause for inspection
-            guest_name = guest[guest_type][0]['bin_name']
-            building_flags = get_platform_build_flags(
-                guest[guest_type][1].get('flags', {}),
-                self.test_config['platform']
+            guest_name, building_flags = resolve_guest_build_options(
+                vm_cfg.get("build_options", {}) if vm_cfg else {},
+                guest_type,
+                self.test_config['platform'],
             )
+            if building_flags.get("cpu_num") in (None, ""):
+                platform_cfg = vm_cfg.get("platform_cfg", {}) if isinstance(vm_cfg, dict) else {}
+                if isinstance(platform_cfg, dict):
+                    platform_cpu_num = platform_cfg.get("cpu_num")
+                    if platform_cpu_num not in (None, ""):
+                        building_flags["cpu_num"] = platform_cpu_num
 
             print_log("INFO", f"Building guest_type: {guest_type}", tab_level=2)
             print_log("INFO", f"Building bin_name: {guest_name}", tab_level=2)
             print_log("INFO", f"Building flags: {building_flags}", tab_level=2)
 
-            bin_name=guest_name
-            flags=building_flags
-
-            guest_class = dict_guests.get(guest_type)
+            guest_class = guest_classes.get(guest_type)
+            if guest_class is None:
+                raise ValueError(f"Unsupported guest type '{guest_type}'")
 
             list_tests = self.test_config["tests"]
             list_suites = self.test_config["suites"]
@@ -141,8 +163,8 @@ class test_framework:
                 self.wrkdir, list_tests, list_suites, benchmark,
                 tf_dir = TF_DIR,
                 tests_srcs=TESTS_DIR,
-                bin_name = bin_name,
-                build_flags = flags
+                bin_name = guest_name,
+                build_flags = building_flags
             )
 
             self.list_obj.append(guest_instance)
@@ -151,7 +173,7 @@ class test_framework:
                 platform=self.test_config['platform'],
                 arch=platform.architecture,
                 toolchain=platform.toolchain,
-                irq_flags=interrupt_flags
+                irq_flags=irq_flags or {}
                 )
 
     def run_cmd(self, cmd, cwd=None):
@@ -255,8 +277,9 @@ class test_framework:
 
         for test in self.tests:
             for guest in test['guests']:
-                if guest not in self.guests:
-                    self.guests.append(guest)
+                guest_lower = str.lower(guest)
+                if guest_lower not in self.guests:
+                    self.guests.append(guest_lower)
 
         return self.guests
 
@@ -271,6 +294,9 @@ class test_framework:
 
         all_ids = [t['id'] for t in self.tests]
         tests_to_run = []
+
+        self.run_type = "benchmark" if args.benchmark else "test"
+
         if args.test is not None and args.test != "all":
             tests_to_run = [int(t) for t in args.test]
         elif args.test_exclude:
@@ -311,7 +337,7 @@ class test_framework:
 
                 if proc.poll() is not None:
                     raise RuntimeError("QEMU died before serial connection")
-                log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
+                log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmark")
 
                 logger_inst.wait_for_finish(log_threads)
 
@@ -335,7 +361,7 @@ class test_framework:
 
         else:
             serial_ports = platform.get_serial_ports()
-            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmarks")
+            log_threads = logger_inst.connect_to_platform_port(serial_ports, echo, self.run_type == "benchmark")
             proc = platform.launch_test(
                 run_bin, irq_flags, guests_bins, setup, self.hypervisor
             )
@@ -360,22 +386,428 @@ class test_framework:
             print("removing guests build artifacts at:", guests_dir)
             shutil.rmtree(guests_dir)
 
-def launch_tests(tf, tests, plat, rt_cfg, wrkdir):
+def _get_platform_name(platform):
+    platform_name = getattr(platform, "platform_name", None)
+    if platform_name:
+        return platform_name
+    return platform.__class__.__name__.replace("_", "-")
 
-    # Iterate over tests to run and execute them
+
+def _resolve_yaml_config_path(config_path, platform):
+    platform_name = _get_platform_name(platform)
+    candidates = [
+        os.path.join(config_path, f"{platform_name}.yaml"),
+        os.path.join(config_path, f"{platform_name}.yml"),
+        os.path.join(config_path, platform_name, f"{platform_name}.yaml"),
+        os.path.join(config_path, platform_name, f"{platform_name}.yml"),
+    ]
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    raise FileNotFoundError(
+        f"Could not find YAML config for platform '{platform_name}' in '{config_path}'."
+    )
+
+
+def _extract_vm_entries(config_file):
+    if not isinstance(config_file, dict):
+        return []
+
+    vm_entries = config_file.get("vms")
+    if vm_entries is None:
+        setup_cfg = config_file.get("setup", {})
+        if isinstance(setup_cfg, dict):
+            vm_entries = setup_cfg.get("vms", [])
+
+    return vm_entries if isinstance(vm_entries, list) else []
+
+
+def _normalize_vm_entry(vm_entry, vm_idx):
+    vm_key = f"vm{vm_idx + 1}"
+
+    if not isinstance(vm_entry, dict):
+        return vm_key, {}
+
+    vm_named_keys = [key for key in vm_entry if isinstance(key, str) and key.startswith("vm")]
+    if vm_named_keys:
+        vm_key = vm_named_keys[0]
+        nested_cfg = vm_entry.get(vm_key)
+        if isinstance(nested_cfg, dict):
+            merged_cfg = dict(nested_cfg)
+            for key, value in vm_entry.items():
+                if key != vm_key:
+                    merged_cfg.setdefault(key, value)
+            return vm_key, merged_cfg
+
+    return vm_key, vm_entry
+
+
+def _to_c_literal(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return hex(value)
+    return str(value)
+
+
+def _write_field_block(lines, fields, indent):
+    valid_fields = [(name, value) for name, value in fields if value is not None and value != ""]
+    for field_idx, (name, value) in enumerate(valid_fields):
+        suffix = "," if field_idx < (len(valid_fields) - 1) else ""
+        lines.append(f"{indent}.{name} = {value}{suffix}")
+
+
+def _flatten_c_designators(cfg, prefix=""):
+    designators = []
+
+    if not isinstance(cfg, dict):
+        return designators
+
+    for key, value in cfg.items():
+        key_str = str(key).strip()
+        if not key_str:
+            continue
+
+        next_prefix = f"{prefix}.{key_str}" if prefix else key_str
+        if isinstance(value, dict):
+            designators.extend(_flatten_c_designators(value, next_prefix))
+        else:
+            designators.append((next_prefix, value))
+
+    return designators
+
+
+def _to_c_initializer_literal(value):
+    if isinstance(value, list):
+        values = []
+        for item in value:
+            item_literal = _to_c_initializer_literal(item)
+            if item_literal is not None:
+                values.append(item_literal)
+        return "{" + ", ".join(values) + "}"
+    return _to_c_literal(value)
+
+
+def read_config(config_path, platform):
+    yaml_path = _resolve_yaml_config_path(config_path, platform)
+    with open(yaml_path, "r") as yaml_file:
+        config_file = yaml.safe_load(yaml_file) or {}
+
+    vm_list_config = []
+    for vm_idx, vm_entry in enumerate(_extract_vm_entries(config_file)):
+        vm_key, vm_cfg = _normalize_vm_entry(vm_entry, vm_idx)
+        vm_cfg = vm_cfg if isinstance(vm_cfg, dict) else {}
+
+        vm_runtime_cfg = vm_cfg.get("config", {})
+        vm_runtime_cfg = vm_runtime_cfg if isinstance(vm_runtime_cfg, dict) else {}
+
+        vm_list_config.append(
+            {
+                vm_key: {
+                    "name": vm_cfg.get("name"),
+                    "build_options": vm_cfg.get("build_options", {}),
+                    "image": vm_runtime_cfg.get("image", {}),
+                    "entry": vm_runtime_cfg.get("entry"),
+                    "platform_cfg": vm_runtime_cfg.get("platform", {}),
+                }
+            }
+        )
+
+    return vm_list_config
+
+
+def write_config(config_path, platform):
+    yaml_path = _resolve_yaml_config_path(config_path, platform)
+    platform_name = _get_platform_name(platform)
+
+    with open(yaml_path, "r") as yaml_file:
+        # BaseLoader preserves scalar formatting from YAML (for example 0x08000000).
+        config_file = yaml.load(yaml_file, Loader=yaml.BaseLoader) or {}
+
+    vm_entries = []
+    for vm_idx, vm_entry in enumerate(_extract_vm_entries(config_file)):
+        vm_key, vm_cfg = _normalize_vm_entry(vm_entry, vm_idx)
+        vm_cfg = vm_cfg if isinstance(vm_cfg, dict) else {}
+        vm_runtime_cfg = vm_cfg.get("config", {})
+        vm_runtime_cfg = vm_runtime_cfg if isinstance(vm_runtime_cfg, dict) else {}
+        vm_image_cfg = vm_runtime_cfg.get("image", {})
+        vm_platform_cfg = vm_runtime_cfg.get("platform", {})
+
+        vm_name = vm_cfg.get("name") or vm_key
+        vm_image_symbol = re.sub(r"[^a-zA-Z0-9_]", "_", f"{vm_name}_image")
+
+        vm_entries.append(
+            {
+                "name": vm_name,
+                "image_symbol": vm_image_symbol,
+                "image": vm_image_cfg if isinstance(vm_image_cfg, dict) else {},
+                "entry": vm_runtime_cfg.get("entry"),
+                "platform": vm_platform_cfg if isinstance(vm_platform_cfg, dict) else {},
+            }
+        )
+
+    def image_mode(image_cfg):
+        has_base = "base_addr" in image_cfg
+        has_load = "load_addr" in image_cfg
+        has_phys = "phys_addr" in image_cfg
+        has_size = "size" in image_cfg
+
+        if has_load and has_phys and has_size:
+            return "loaded"
+        if has_base and not has_load and not has_size:
+            return "macro_offset_size"
+        return "explicit_fields"
+
+    output_lines = ["#include <config.h>", ""]
+
+    image_declared = False
+    for vm in vm_entries:
+        if image_mode(vm["image"]) == "macro_offset_size":
+            output_lines.append(
+                f"VM_IMAGE({vm['image_symbol']}, XSTR(BAO_WRKDIR_IMGS/{vm['name']}.bin))"
+            )
+            image_declared = True
+
+    if image_declared:
+        output_lines.append("")
+
+    output_lines.extend(
+        [
+            "struct config config = {",
+            "",
+            "    CONFIG_HEADER",
+            "",
+            f"    .vmlist_size = {len(vm_entries)},",
+            "    .vmlist = (struct vm_config[]) {",
+        ]
+    )
+
+    for vm_idx, vm in enumerate(vm_entries):
+        image_cfg = vm["image"]
+        platform_cfg = vm["platform"]
+        vm_mode = image_mode(image_cfg)
+
+        regions_cfg = platform_cfg.get("regions", [])
+        regions_cfg = regions_cfg if isinstance(regions_cfg, list) else []
+        devs_cfg = platform_cfg.get("devs", [])
+        devs_cfg = devs_cfg if isinstance(devs_cfg, list) else []
+        arch_cfg = platform_cfg.get("arch", {})
+        arch_cfg = arch_cfg if isinstance(arch_cfg, dict) else {}
+
+        output_lines.append("        {")
+
+        if vm_mode == "loaded":
+            load_addr = _to_c_literal(image_cfg.get("load_addr"))
+            phys_addr = _to_c_literal(image_cfg.get("phys_addr"))
+            image_size = _to_c_literal(image_cfg.get("size"))
+            output_lines.append(
+                f"            .image = VM_IMAGE_LOADED({load_addr}, {phys_addr}, {image_size}),"
+            )
+        else:
+            if vm_mode == "macro_offset_size":
+                load_addr = f"VM_IMAGE_OFFSET({vm['image_symbol']})"
+                image_size = f"VM_IMAGE_SIZE({vm['image_symbol']})"
+            else:
+                load_addr = _to_c_literal(image_cfg.get("load_addr"))
+                image_size = _to_c_literal(image_cfg.get("size"))
+
+            if load_addr is None:
+                load_addr = f"VM_IMAGE_OFFSET({vm['image_symbol']})"
+            if image_size is None:
+                image_size = f"VM_IMAGE_SIZE({vm['image_symbol']})"
+
+            base_addr = _to_c_literal(image_cfg.get("base_addr"))
+            if base_addr is None:
+                base_addr = _to_c_literal(image_cfg.get("phys_addr"))
+            if base_addr is None:
+                base_addr = load_addr
+
+            output_lines.append("            .image = {")
+            _write_field_block(
+                output_lines,
+                [
+                    ("base_addr", base_addr),
+                    ("load_addr", load_addr),
+                    ("size", image_size),
+                ],
+                "                ",
+            )
+            output_lines.append("            },")
+
+        output_lines.append("")
+        output_lines.append(f"            .entry = {_to_c_literal(vm['entry'])},")
+        output_lines.append("")
+        output_lines.append("            .platform = {")
+        output_lines.append(f"                .cpu_num = {_to_c_literal(platform_cfg.get('cpu_num'))},")
+        output_lines.append("")
+        output_lines.append(f"                .region_num = {len(regions_cfg)},")
+        output_lines.append("                .regions =  (struct vm_mem_region[]) {")
+        for region_idx, region in enumerate(regions_cfg):
+            region = region if isinstance(region, dict) else {}
+            output_lines.append("                    {")
+            _write_field_block(
+                output_lines,
+                [
+                    ("base", _to_c_literal(region.get("base"))),
+                    ("size", _to_c_literal(region.get("size"))),
+                ],
+                "                        ",
+            )
+            output_lines.append("                    }" + ("," if region_idx < (len(regions_cfg) - 1) else ""))
+        output_lines.append("                },")
+        output_lines.append("")
+        output_lines.append(f"                .dev_num = {len(devs_cfg)},")
+        output_lines.append("                .devs =  (struct vm_dev_region[]) {")
+        for dev_idx, dev in enumerate(devs_cfg):
+            dev = dev if isinstance(dev, dict) else {}
+            interrupts = dev.get("interrupts", [])
+            interrupts = interrupts if isinstance(interrupts, list) else []
+            interrupt_values = ", ".join(_to_c_literal(irq) for irq in interrupts)
+            only_interrupts = (
+                interrupts
+                and "pa" not in dev
+                and "va" not in dev
+                and "size" not in dev
+            )
+
+            output_lines.append("                    {")
+
+            if platform_name == "qemu-aarch64-virt":
+                if interrupts == ["33"] and not only_interrupts:
+                    output_lines.append("                        /* PL011 */")
+                elif interrupts == ["27"] and only_interrupts:
+                    output_lines.append("                        /* Arch timer interrupt */")
+
+            if platform_name == "qemu-aarch64-virt" and interrupts == ["27"] and only_interrupts:
+                output_lines.append(f"                        .interrupt_num = {len(interrupts)},")
+                output_lines.append("                        .interrupts =")
+                output_lines.append(f"                            (irqid_t[]) {{{interrupt_values}}}")
+            else:
+                _write_field_block(
+                    output_lines,
+                    [
+                        ("pa", _to_c_literal(dev.get("pa"))),
+                        ("va", _to_c_literal(dev.get("va"))),
+                        ("size", _to_c_literal(dev.get("size"))),
+                        ("interrupt_num", str(len(interrupts)) if interrupts else None),
+                        ("interrupts", f"(irqid_t[]) {{{interrupt_values}}}" if interrupts else None),
+                    ],
+                    "                        ",
+                )
+            output_lines.append("                    }" + ("," if dev_idx < (len(devs_cfg) - 1) else ""))
+        output_lines.append("                },")
+
+        if arch_cfg:
+            output_lines.append("")
+            output_lines.append("                .arch = {")
+            generic_arch_entries = []
+            for arch_key, arch_value in _flatten_c_designators(
+                {key: value for key, value in arch_cfg.items() if key != "gic"}
+            ):
+                arch_literal = _to_c_initializer_literal(arch_value)
+                if arch_literal is None:
+                    continue
+                if platform_name == "qemu-aarch64-virt" and arch_key in {"gic.gicd_addr", "gic.gicr_addr"}:
+                    arch_literal = f"(paddr_t) {arch_literal}"
+                generic_arch_entries.append((arch_key, arch_literal))
+
+            gic_cfg = arch_cfg.get("gic")
+            if isinstance(gic_cfg, dict):
+                output_lines.append("                    .gic = {")
+                for gic_key, gic_value in gic_cfg.items():
+                    gic_literal = _to_c_initializer_literal(gic_value)
+                    if gic_literal is None:
+                        continue
+                    if platform_name == "qemu-aarch64-virt" and gic_key in {"gicd_addr", "gicr_addr"}:
+                        gic_literal = f"(paddr_t) {gic_literal}"
+                    output_lines.append(f"                        .{gic_key} = {gic_literal},")
+                output_lines.append("                    }" + ("," if generic_arch_entries else ""))
+
+            for arch_key, arch_literal in generic_arch_entries:
+                output_lines.append(f"                    .{arch_key} = {arch_literal},")
+            output_lines.append("                }")
+
+        output_lines.append("            },")
+        output_lines.append("        }" + ("," if vm_idx < (len(vm_entries) - 1) else ""))
+
+    output_lines.extend(["    },", "};", ""])
+
+    output_c_path = os.path.splitext(yaml_path)[0] + ".c"
+    if os.path.basename(os.path.dirname(yaml_path)) == platform_name:
+        output_c_path = os.path.join(os.path.dirname(yaml_path), "config.c")
+
+    with open(output_c_path, "w") as output_file:
+        output_file.write("\n".join(output_lines))
+
+    return output_c_path
+
+def launch_tests(tf, tests, platform, wrkdir):
+    # aggregate tests based on setup: all tests with the same setup can be aggregated in the same run
+    setup_groups = {}
     for test in tests:
-        print_log("INFO", f"Preparing Test ID {test['id']}: {test['suite']} - {test['name']}...", tab_level=0)
+        setup = test['setup']
+        if setup not in setup_groups:
+            setup_groups[setup] = []
+        setup_groups[setup].append(test)
 
-        print_log("INFO", f"T{test['id']}: Building guests ...", tab_level=0)
-        tf.build_guests(plat)
+    raw_irq_flags = getattr(platform, "irq_flags", {})
+    if isinstance(raw_irq_flags, tuple) and len(raw_irq_flags) == 1 and isinstance(raw_irq_flags[0], dict):
+        raw_irq_flags = raw_irq_flags[0]
+    interrupt_flags = dict(raw_irq_flags) if isinstance(raw_irq_flags, dict) else {}
 
-    print_log("INFO", f"Building run image [{tf.hypervisor}]...", tab_level=0)
-    run_bin, bin_name, elf_name = tf.build_run_bin(wrkdir, bao_cfg_path_abs, plat)
+    for setup, grouped_tests in setup_groups.items():
+        setup_name = str.lower(setup)
+        setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
+        test_ids = [test['id'] for test in grouped_tests]
+        print_log(
+            "INFO",
+            f"Preparing Test IDs {test_ids}: {grouped_tests[0]['suite']} - {grouped_tests[0]['name']} (and others with same setup)...",
+            tab_level=0
+        )
 
-    if tf.build_firmware:
-        platform.build_firmware(run_bin, interrupt_flags)
+        vm_configs = read_config(setup_cfg_path, platform)
+        bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
+        write_config(setup_cfg_path, platform)
 
-    tf.launch_test(run_bin, interrupt_flags, tf.test_config['setup'], tf.test_config['echo'], platform)
+        tf.hypervisor = tf.runtime_config.get("hypervisor", "bao")
+        tf.hypervisor_srcs = tf.runtime_config.get("hypervisor_srcs", "")
+        tf.test_config = {
+            "platform": _get_platform_name(platform),
+            "setup": setup_name,
+            "echo": tf.runtime_config.get("echo", "tf"),
+            "tests": " ".join(dict.fromkeys(test["name"] for test in grouped_tests if test.get("name"))),
+            "suites": " ".join(dict.fromkeys(test["suite"] for test in grouped_tests if test.get("suite"))),
+            "benchmark": tf.run_type == "benchmark",
+            "vms": vm_configs,
+        }
+
+        if "GIC_version" not in interrupt_flags:
+            platform_args = tf.runtime_config.get("platform_args", "")
+            if isinstance(platform_args, str):
+                platform_args = [arg.strip() for arg in platform_args.split(",") if arg.strip()]
+            else:
+                platform_args = []
+            for arg in platform_args:
+                if arg.upper().startswith("GICV"):
+                    interrupt_flags["GIC_version"] = arg.upper()
+                    break
+
+        print_log("INFO", f"T{test_ids}: Building guests ...", tab_level=0)
+        tf.build_guests(platform, interrupt_flags)
+
+        print_log("INFO", f"Building run image [{tf.hypervisor}]...", tab_level=0)
+        run_bin, bin_name, elf_name = tf.build_run_bin(wrkdir, bao_cfg_path_abs, platform)
+
+        if tf.runtime_config.get("firmware_build", True):
+            platform.build_firmware(run_bin, interrupt_flags)
+
+        tf.launch_test(run_bin, interrupt_flags, setup_name, tf.runtime_config.get("echo", "tf"), platform)
 
 def main():
     print_log("INFO", "Starting test framework...", tab_level=0)
@@ -414,8 +846,8 @@ def main():
         plat.toolchain = plat.toolchain_prefix
         print_log("INFO", f"Skipping toolchain build, expecting '{plat.toolchain_prefix}' to be available in the environment.", tab_level=1)
 
-    print_log("INFO", "Preparing to launch test IDs {} on platform {}...".format([test['id'] for test in tests], tf.runtime_config['platform']), tab_level=0)
-    launch_tests(tf, tests, plat, tf.runtime_config, wrkdir)
+    print_log("INFO", "Preparing to launch test IDs {} on platform {}...".format([test['id'] for test in tf.tests_to_run], tf.runtime_config['platform']), tab_level=0)
+    launch_tests(tf, tf.tests_to_run, plat, wrkdir)
 
     tf.cleanup()
 
