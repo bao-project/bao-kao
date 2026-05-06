@@ -1,4 +1,6 @@
 from asyncio import threads
+
+from prettytable import PrettyTable
 from inputs import CLI
 import os
 import sys
@@ -435,6 +437,9 @@ class test_framework:
             'hypervisor_srcs': args.hyp_srcs,
         }
 
+        if args.generate_id_readme is not None:
+            self.generate_id_readme()
+
     def launch_test(self, run_bin, irq_flags, setup, echo, platform, benchmark_name=None):
         logger_inst = logger.TestLogger(
             platform.cpu_freq,
@@ -501,6 +506,22 @@ class test_framework:
         if os.path.exists(guests_dir):
             print("removing guests build artifacts at:", guests_dir)
             shutil.rmtree(guests_dir)
+
+    def generate_id_readme(self):
+        table_tests = PrettyTable()
+        table_tests.field_names = ["ID", "Suite", "Name", "Setup", "Description", "File"]
+        for test in self.tests:
+            table_tests.add_row([test['id'], test['suite'], test['name'], test['setup'], test['description'], test['file']])
+        print(table_tests)
+
+        table_benchs = PrettyTable()
+        table_benchs.field_names = ["ID", "Name", "Setup", "Description", "File"]
+        for bench in self.benchmarks:
+            table_benchs.add_row([bench['id'], bench['name'], bench['setup'], bench['description'], bench['file']])
+        print(table_benchs)
+
+        exit(0)
+
 
 def _get_platform_name(platform):
     platform_name = getattr(platform, "platform_name", None)

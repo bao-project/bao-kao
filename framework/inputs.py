@@ -76,6 +76,14 @@ class CLI(InputProvider):
                     help="Assumes all benchmarks are executed, excluding a comma-separated list of benchmark IDs.",
                     default=False)
 
+        parser.add_argument("--generate-id-readme",
+                    metavar="PATH",
+                    nargs="?",
+                    const="README.workload-ids.md",
+                    default=None,
+                    help="Generate a Markdown file mapping discovered test and benchmark IDs, then exit.\n"
+                         "If PATH is omitted, writes to README.workload-ids.md")
+
         parser.add_argument("--no-firmware-build",
                     action="store_true",
                     help="Skips firmware build phase, assuming pre-built firmware is available",
