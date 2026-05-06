@@ -50,8 +50,8 @@ class CLI(InputProvider):
                     nargs="?",
                     const="all",
                     default=None,
-                    help="Comma-separated list of test IDs to execute. If not "
-                         "specified, all tests will be executed.")
+                    help="Comma-separated list of test IDs to execute. If --test "
+                         "is provided without IDs, all discovered tests are executed.")
 
         parser.add_argument("-x", "--test-exclude",
                     metavar="ID[,ID,...]",
@@ -64,8 +64,17 @@ class CLI(InputProvider):
                     default=False)
 
         parser.add_argument("-b", "--benchmark",
-                    help="Run in benchmark mode",
-                    default=" ")
+                    metavar="ID[,ID,...]",
+                    nargs="?",
+                    const="all",
+                    default=None,
+                    help="Comma-separated list of benchmark IDs to execute. If --benchmark "
+                         "is provided without IDs, all discovered benchmarks are executed.")
+
+        parser.add_argument("--benchmark-exclude",
+                    metavar="ID[,ID,...]",
+                    help="Assumes all benchmarks are executed, excluding a comma-separated list of benchmark IDs.",
+                    default=False)
 
         parser.add_argument("--no-firmware-build",
                     action="store_true",
@@ -97,23 +106,37 @@ class CLI(InputProvider):
         return validated_args
 
     def validate_args(self, args):
+        def parse_csv_ids(csv_value, label):
+            ids = [entry.strip() for entry in csv_value.split(",")]
+            if not all(ids):
+                raise ValueError(f"{label} IDs cannot be empty. Please ensure that all {label.lower()} IDs are valid.")
+            return ids
+
         if args.platform.strip() == "":
             raise ValueError("Platform cannot be empty. Please specify a valid platform using the -p or --platform argument.")
 
         if args.test is not None and args.test_exclude:
             raise ValueError("Cannot specify both --test and --test-exclude arguments. Please choose one or the other.")
 
+        if args.benchmark is not None and args.benchmark_exclude:
+            raise ValueError("Cannot specify both --benchmark and --benchmark-exclude arguments. Please choose one or the other.")
+
+        test_mode_requested = args.test is not None or bool(args.test_exclude)
+        benchmark_mode_requested = args.benchmark is not None or bool(args.benchmark_exclude)
+        if test_mode_requested and benchmark_mode_requested:
+            raise ValueError("Cannot combine test and benchmark selection arguments. Please choose either tests or benchmarks.")
+
         if args.test is not None and args.test != "all":
-            test_ids = [test_id.strip() for test_id in args.test.split(",")]
-            if not all(test_ids):
-                raise ValueError("Test IDs cannot be empty. Please ensure that all test IDs are valid.")
-            args.test = test_ids
+            args.test = parse_csv_ids(args.test, "Test")
 
         if args.test_exclude:
-            exclude_ids = [test_id.strip() for test_id in args.test_exclude.split(",")]
-            if not all(exclude_ids):
-                raise ValueError("Excluded Test IDs cannot be empty. Please ensure that all excluded test IDs are valid.")
-            args.test_exclude = exclude_ids
+            args.test_exclude = parse_csv_ids(args.test_exclude, "Excluded Test")
+
+        if args.benchmark is not None and args.benchmark != "all":
+            args.benchmark = parse_csv_ids(args.benchmark, "Benchmark")
+
+        if args.benchmark_exclude:
+            args.benchmark_exclude = parse_csv_ids(args.benchmark_exclude, "Excluded Benchmark")
 
         valid_echo_options = {"full", "tf", "none"}
         if args.echo not in valid_echo_options:

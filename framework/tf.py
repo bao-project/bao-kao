@@ -36,17 +36,17 @@ sys.path.append(TF_PLAT_DIR)
 sys.path.append(TF_TOOL_DIR)
 sys.path.append(TF_UTILS_DIR)
 
+baremetal_benchmark = None
+if os.path.exists(BENCHS_DIR) and os.listdir(BENCHS_DIR):
+    sys.path.append(os.path.join(BENCHS_DIR, "guests"))
+    from baremetal_benchmark import baremetal_benchmark
+
 # Test Framework imports
 from constants import print_log
 from bao import bao
 from generic import standalone
 from baremetal  import baremetal_test
 
-# Optionally register benchmark guest if the bao-benchmarks submodule is populated
-# if os.path.exists(BENCHS_DIR) and os.listdir(BENCHS_DIR):
-#     sys.path.append(os.path.join(BENCHS_DIR, "guests"))
-#     from baremetal_benchmark import baremetal_benchmark
-#     dict_guests["baremetal_benchmark"] = baremetal_benchmark
 
 class test_framework:
     def __init__(self, wrkdir):
@@ -56,6 +56,9 @@ class test_framework:
         self.bench_cfg = {}
         self.runtime_config = {}
         self.tests = []
+        self.benchmarks = []
+        self.tests_to_run = []
+        self.run_type = "test"
         self.plats = []
 
     def build_guests(self, platform, irq_flags=None):
@@ -119,29 +122,34 @@ class test_framework:
         guest_classes = {
             "baremetal": baremetal_test,
         }
+        if baremetal_benchmark is not None:
+            guest_classes["baremetal_benchmark"] = baremetal_benchmark
 
-        for guest in self.guests:
-            guest_type = str(guest).lower()
+        vm_entries = self.test_config.get("vms", [])
+        if not isinstance(vm_entries, list):
+            vm_entries = []
+
+        for vm_idx, vm_entry in enumerate(vm_entries, start=1):
+            if not isinstance(vm_entry, dict):
+                continue
+            vm_data = next(iter(vm_entry.values()), {})
+            if not isinstance(vm_data, dict):
+                continue
+
+            guest_type = str(vm_data.get("name", "")).lower()
+            if not guest_type:
+                raise ValueError(
+                    f"Missing guest name in VM entry #{vm_idx} for setup '{self.test_config.get('setup', '')}'."
+                )
             print_log("INFO", f"Building guest {guest_type}:", tab_level=1)
 
-            vm_cfg = None
-            for vm_entry in self.test_config.get("vms", []):
-                if not isinstance(vm_entry, dict):
-                    continue
-                vm_data = next(iter(vm_entry.values()), {})
-                if not isinstance(vm_data, dict):
-                    continue
-                if str(vm_data.get("name", "")).lower() == guest_type:
-                    vm_cfg = vm_data
-                    break
-
             guest_name, building_flags = resolve_guest_build_options(
-                vm_cfg.get("build_options", {}) if vm_cfg else {},
+                vm_data.get("build_options", {}),
                 guest_type,
                 self.test_config['platform'],
             )
             if building_flags.get("cpu_num") in (None, ""):
-                platform_cfg = vm_cfg.get("platform_cfg", {}) if isinstance(vm_cfg, dict) else {}
+                platform_cfg = vm_data.get("platform_cfg", {})
                 if isinstance(platform_cfg, dict):
                     platform_cpu_num = platform_cfg.get("cpu_num")
                     if platform_cpu_num not in (None, ""):
@@ -272,45 +280,149 @@ class test_framework:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-    def populate_guests(self):
-        self.guests = []
+    def populate_benchmarks(self):
+        self.benchmarks = []
+        benchmark_src_root = os.path.join(BENCHS_DIR, "src", "benchmarks")
+        benchmark_cfg_root = os.path.join(BENCHS_DIR, "configs")
+        if not os.path.isdir(benchmark_src_root) or not os.path.isdir(benchmark_cfg_root):
+            return self.benchmarks
 
-        for test in self.tests:
-            for guest in test['guests']:
-                guest_lower = str.lower(guest)
+        def name_candidates(name):
+            raw_name = str(name).strip().lower()
+            candidates = [raw_name, raw_name.replace("_", "-"), raw_name.replace("-", "_")]
+            return [candidate for i, candidate in enumerate(candidates) if candidate and candidate not in candidates[:i]]
+
+        def resolve_existing_subdir(base_dir, name):
+            for candidate in name_candidates(name):
+                if os.path.isdir(os.path.join(base_dir, candidate)):
+                    return candidate
+            return None
+
+        def has_any_yaml(config_dir):
+            for root, _, files in os.walk(config_dir):
+                for file_name in files:
+                    if file_name.endswith((".yaml", ".yml")):
+                        return True
+            return False
+
+        benchmark_dirs = sorted(
+            entry for entry in os.listdir(benchmark_src_root)
+            if os.path.isdir(os.path.join(benchmark_src_root, entry))
+        )
+
+        for benchmark_name in benchmark_dirs:
+            benchmark_src_dir = os.path.join(benchmark_src_root, benchmark_name)
+            guest_dirs = sorted(
+                entry for entry in os.listdir(benchmark_src_dir)
+                if os.path.isdir(os.path.join(benchmark_src_dir, entry))
+            )
+            if not guest_dirs:
+                print_log(
+                    "WARNING",
+                    f"Skipping benchmark '{benchmark_name}': no guest directories found in '{benchmark_src_dir}'.",
+                    tab_level=1
+                )
+                continue
+
+            setup_name = resolve_existing_subdir(benchmark_cfg_root, benchmark_name)
+            if setup_name is None:
+                print_log(
+                    "WARNING",
+                    f"Skipping benchmark '{benchmark_name}': config directory not found under '{benchmark_cfg_root}'.",
+                    tab_level=1
+                )
+                continue
+
+            setup_cfg_dir = os.path.join(benchmark_cfg_root, setup_name)
+            if not has_any_yaml(setup_cfg_dir):
+                print_log(
+                    "WARNING",
+                    f"Skipping benchmark '{benchmark_name}': no YAML configs found under '{setup_cfg_dir}'.",
+                    tab_level=1
+                )
+                continue
+
+            # Benchmark IDs follow discovery order from tests/benchs/src/benchmarks.
+            # We only assign IDs to runnable benchmarks (matching config dir with YAML files).
+            bench_nr = len(self.benchmarks)
+
+            self.benchmarks.append(
+                {
+                    "id": 100 + bench_nr,
+                    "suite_nr": 1,
+                    "test_nr": bench_nr,
+                    "suite": "BENCHMARK",
+                    "name": benchmark_name,
+                    "setup": setup_name,
+                    "guests": ["baremetal_benchmark"],
+                    "description": f"Benchmark '{benchmark_name}'",
+                    "file": benchmark_name,
+                    "benchmark": benchmark_name,
+                }
+            )
+
+        return self.benchmarks
+
+    def populate_guests(self, workloads=None):
+        self.guests = []
+        workloads = workloads if workloads is not None else self.tests
+
+        for workload in workloads:
+            for guest in workload.get('guests', []):
+                guest_lower = str(guest).lower()
                 if guest_lower not in self.guests:
                     self.guests.append(guest_lower)
 
         return self.guests
 
+    def validate_workload_ids(self, workload_ids, workloads, workload_type):
+        valid_ids = {workload['id'] for workload in workloads}
+        for workload_id in workload_ids:
+            if workload_id not in valid_ids:
+                raise ValueError(f"Invalid {workload_type} ID: {workload_id}. Valid IDs are: {sorted(valid_ids)}")
+
     def validate_tests(self, test_ids):
-        valid_ids = {test['id'] for test in self.tests}
-        for test_id in test_ids:
-            if test_id not in valid_ids:
-                raise ValueError(f"Invalid test ID: {test_id}. Valid IDs are: {sorted(valid_ids)}")
+        self.validate_workload_ids(test_ids, self.tests, "test")
 
     def parse_args(self):
         args = CLI().tf_config(platforms=[plat[0] for plat in self.plats])
 
-        all_ids = [t['id'] for t in self.tests]
-        tests_to_run = []
-
-        self.run_type = "benchmark" if args.benchmark else "test"
-
-        if args.test is not None and args.test != "all":
-            tests_to_run = [int(t) for t in args.test]
-        elif args.test_exclude:
-            exclude_ids = {int(t) for t in args.test_exclude}
-            tests_to_run = [i for i in all_ids if i not in exclude_ids]
+        benchmark_mode_requested = args.benchmark is not None or bool(args.benchmark_exclude)
+        if benchmark_mode_requested:
+            self.run_type = "benchmark"
+            workloads = self.benchmarks
+            include_ids = args.benchmark
+            exclude_ids = args.benchmark_exclude
         else:
-            tests_to_run = all_ids
+            self.run_type = "test"
+            workloads = self.tests
+            include_ids = args.test
+            exclude_ids = args.test_exclude
 
-        print_log("INFO", "Validating tests IDs...", tab_level=0)
-        self.validate_tests(tests_to_run)
-        print_log("SUCCESS", "Tests to run: {}.".format(", ".join(map(str, tests_to_run))), tab_level=0)
+        all_ids = [workload['id'] for workload in workloads]
+        workloads_to_run = []
 
-        # Create new variable to hold the full information of the validated tests
-        self.tests_to_run = [test for test in self.tests if test['id'] in tests_to_run]
+        if include_ids is not None and include_ids != "all":
+            try:
+                workloads_to_run = [int(workload_id) for workload_id in include_ids]
+            except ValueError as exc:
+                raise ValueError(f"{self.run_type.capitalize()} IDs must be integers.") from exc
+        elif exclude_ids:
+            try:
+                excluded = {int(workload_id) for workload_id in exclude_ids}
+            except ValueError as exc:
+                raise ValueError(f"Excluded {self.run_type} IDs must be integers.") from exc
+            workloads_to_run = [workload_id for workload_id in all_ids if workload_id not in excluded]
+        else:
+            workloads_to_run = all_ids
+
+        workload_label = self.run_type.capitalize()
+        print_log("INFO", f"Validating {self.run_type} IDs...", tab_level=0)
+        self.validate_workload_ids(workloads_to_run, workloads, self.run_type)
+        print_log("SUCCESS", f"{workload_label}s to run: {', '.join(map(str, workloads_to_run))}.", tab_level=0)
+
+        # Keep the existing variable name for compatibility with the launch flow.
+        self.tests_to_run = [workload for workload in workloads if workload['id'] in workloads_to_run]
 
         self.runtime_config = {
             'log_level': int(args.log_level),
@@ -540,11 +652,18 @@ def write_config(config_path, platform):
         vm_platform_cfg = vm_runtime_cfg.get("platform", {})
 
         vm_name = vm_cfg.get("name") or vm_key
-        vm_image_symbol = re.sub(r"[^a-zA-Z0-9_]", "_", f"{vm_name}_image")
+        build_options = vm_cfg.get("build_options", {})
+        build_options = build_options if isinstance(build_options, dict) else {}
+        vm_bin_name = build_options.get("bin_name")
+        if not isinstance(vm_bin_name, str) or not vm_bin_name.strip():
+            vm_bin_name = vm_name
+        vm_bin_name = vm_bin_name.strip()
+        vm_image_symbol = re.sub(r"[^a-zA-Z0-9_]", "_", f"{vm_bin_name}_image")
 
         vm_entries.append(
             {
                 "name": vm_name,
+                "bin_name": vm_bin_name,
                 "image_symbol": vm_image_symbol,
                 "image": vm_image_cfg if isinstance(vm_image_cfg, dict) else {},
                 "entry": vm_runtime_cfg.get("entry"),
@@ -570,7 +689,7 @@ def write_config(config_path, platform):
     for vm in vm_entries:
         if image_mode(vm["image"]) == "macro_offset_size":
             output_lines.append(
-                f"VM_IMAGE({vm['image_symbol']}, XSTR(BAO_WRKDIR_IMGS/{vm['name']}.bin))"
+                f"VM_IMAGE({vm['image_symbol']}, XSTR(BAO_WRKDIR_IMGS/{vm['bin_name']}.bin))"
             )
             image_declared = True
 
@@ -748,10 +867,11 @@ def write_config(config_path, platform):
     return output_c_path
 
 def launch_tests(tf, tests, platform, wrkdir):
-    # aggregate tests based on setup: all tests with the same setup can be aggregated in the same run
+    # Aggregate workloads based on setup so we can reuse one image build per setup.
+    group_key = "setup"
     setup_groups = {}
     for test in tests:
-        setup = test['setup']
+        setup = test.get(group_key) or test.get("setup")
         if setup not in setup_groups:
             setup_groups[setup] = []
         setup_groups[setup].append(test)
@@ -762,18 +882,31 @@ def launch_tests(tf, tests, platform, wrkdir):
     interrupt_flags = dict(raw_irq_flags) if isinstance(raw_irq_flags, dict) else {}
 
     for setup, grouped_tests in setup_groups.items():
-        setup_name = str.lower(setup)
-        setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
         test_ids = [test['id'] for test in grouped_tests]
-        print_log(
-            "INFO",
-            f"Preparing Test IDs {test_ids}: {grouped_tests[0]['suite']} - {grouped_tests[0]['name']} (and others with same setup)...",
-            tab_level=0
-        )
+        is_benchmark = tf.run_type == "benchmark"
 
-        vm_configs = read_config(setup_cfg_path, platform)
-        bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
-        write_config(setup_cfg_path, platform)
+        if is_benchmark:
+            benchmark_name = str(grouped_tests[0].get("benchmark", setup)).strip()
+            setup_name = str(grouped_tests[0].get("setup", benchmark_name)).lower()
+            setup_cfg_path = os.path.join(BENCHS_DIR, "configs", setup_name)
+            if not os.path.isdir(setup_cfg_path):
+                raise FileNotFoundError(f"Could not find benchmark config directory '{setup_cfg_path}'.")
+
+            vm_configs = read_config(setup_cfg_path, platform)
+            bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
+            write_config(setup_cfg_path, platform)
+            print_log("INFO", f"Preparing Benchmark IDs {test_ids}: {benchmark_name}.", tab_level=0)
+        else:
+            setup_name = str(setup).lower()
+            setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
+            vm_configs = read_config(setup_cfg_path, platform)
+            bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
+            write_config(setup_cfg_path, platform)
+            print_log(
+                "INFO",
+                f"Preparing Test IDs {test_ids}: {grouped_tests[0]['suite']} - {grouped_tests[0]['name']} (and others with same setup)...",
+                tab_level=0
+            )
 
         tf.hypervisor = tf.runtime_config.get("hypervisor", "bao")
         tf.hypervisor_srcs = tf.runtime_config.get("hypervisor_srcs", "")
@@ -783,7 +916,7 @@ def launch_tests(tf, tests, platform, wrkdir):
             "echo": tf.runtime_config.get("echo", "tf"),
             "tests": " ".join(dict.fromkeys(test["name"] for test in grouped_tests if test.get("name"))),
             "suites": " ".join(dict.fromkeys(test["suite"] for test in grouped_tests if test.get("suite"))),
-            "benchmark": tf.run_type == "benchmark",
+            "benchmark": benchmark_name if is_benchmark else False,
             "vms": vm_configs,
         }
 
@@ -798,7 +931,8 @@ def launch_tests(tf, tests, platform, wrkdir):
                     interrupt_flags["GIC_version"] = arg.upper()
                     break
 
-        print_log("INFO", f"T{test_ids}: Building guests ...", tab_level=0)
+        workload_prefix = "B" if is_benchmark else "T"
+        print_log("INFO", f"{workload_prefix}{test_ids}: Building guests ...", tab_level=0)
         tf.build_guests(platform, interrupt_flags)
 
         print_log("INFO", f"Building run image [{tf.hypervisor}]...", tab_level=0)
@@ -818,20 +952,27 @@ def main():
     tf = test_framework(wrkdir)
 
     print_log("INFO", "Populating tests ...", tab_level=0)
-    tests = tf.populate_tests()
+    tf.populate_tests()
     print_log("SUCCESS", "Tests populated.", tab_level=0)
+
+    print_log("INFO", "Populating benchmarks ...", tab_level=0)
+    benchmarks = tf.populate_benchmarks()
+    if benchmarks:
+        print_log("SUCCESS", "Benchmarks populated.", tab_level=0)
+    else:
+        print_log("WARNING", "No runnable benchmarks discovered.", tab_level=0)
 
     print_log("INFO", "Populating platforms ...", tab_level=0)
     tf.populate_plats()
     print_log("SUCCESS", f"Platforms populated: {', '.join([plat[0] for plat in tf.plats])}.", tab_level=0)
 
-    print_log("INFO", "Populating guests to build ...", tab_level=0)
-    guests = tf.populate_guests()
-    print_log("SUCCESS", f"Guests populated: {', '.join(guests)}.", tab_level=0)
-
     print_log("INFO", "Reading TF configuration ...", tab_level=0)
     tf.parse_args()
     print_log("SUCCESS", "Runtime TF configuration built.", tab_level=0)
+
+    print_log("INFO", "Populating guests to build ...", tab_level=0)
+    guests = tf.populate_guests(tf.tests_to_run)
+    print_log("SUCCESS", f"Guests populated: {', '.join(guests)}.", tab_level=0)
 
     print_log("INFO", "Cleaning up build artifacts from previous runs...", tab_level=0)
     tf.cleanup()
@@ -846,7 +987,13 @@ def main():
         plat.toolchain = plat.toolchain_prefix
         print_log("INFO", f"Skipping toolchain build, expecting '{plat.toolchain_prefix}' to be available in the environment.", tab_level=1)
 
-    print_log("INFO", "Preparing to launch test IDs {} on platform {}...".format([test['id'] for test in tf.tests_to_run], tf.runtime_config['platform']), tab_level=0)
+    print_log(
+        "INFO",
+        "Preparing to launch {} IDs {} on platform {}...".format(
+            tf.run_type, [test['id'] for test in tf.tests_to_run], tf.runtime_config['platform']
+        ),
+        tab_level=0
+    )
     launch_tests(tf, tf.tests_to_run, plat, wrkdir)
 
     tf.cleanup()
