@@ -2,88 +2,132 @@
 # Copyright (c) Bao Project and Contributors.
 
 import os
+import urllib.request
+import tarfile
 import shutil
 import subprocess
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
+
 
 class v850_elf:
     def __init__(self, toolchain_dir, host_platform="x86_64"):
-        # Keep same interface even if host_platform is unused
+        self.toolchain_version = "v14.2.0"
         self.toolchain_dir = toolchain_dir
+        self.toolchain_parent = os.path.dirname(self.toolchain_dir)
         self.host_platform = host_platform
 
-        self.repo_url = "https://github.com/miguelafsilva5/bao-rh850-toolchain.git"
-        self.repo_dir = self.toolchain_dir
-        self.install_dir = os.path.join(self.repo_dir, "gcc-v850-elf-master")
-        self.build_script = os.path.join(
-            self.repo_dir, "build-gcc-v850-elf-toolchain.sh"
+        self.toolchain_prefix = os.path.join(self.toolchain_dir, "bin", "v850-elf-")
+        self.toolchain_gcc = f"{self.toolchain_prefix}gcc"
+
+        tarball_name = "gcc-14.2.0-v850-elf.tar.gz"
+        self.download_url = (
+            "https://github.com/bao-project/gcc-v850-elf-toolchain/"
+            f"releases/download/{self.toolchain_version}/{tarball_name}"
         )
 
-        os.makedirs(os.path.dirname(self.toolchain_dir), exist_ok=True)
+        os.makedirs(self.toolchain_parent, exist_ok=True)
 
     def fetch_sources(self):
-        """
-        Clone the toolchain repo if not present.
-        Returns (toolchain_dir, need_extract) to match arm_none_eabi.
-        """
         need_extract = False
+        tarball_path = os.path.join(self.toolchain_parent, "gcc-14.2.0-v850-elf.tar.gz")
 
-        if not os.path.exists(self.repo_dir):
-            print(f"[INFO] Cloning {self.repo_url}...")
-            subprocess.check_call([
-                "git", "clone", self.repo_url, self.repo_dir
-            ])
-            need_extract = True
+        if self._resolve_local_prefix():
+            print_log("INFO", "Toolchain already exists locally", tab_level=3)
         else:
-            print(f"[INFO] Toolchain repo already exists: {self.repo_dir}")
+            if not os.path.exists(tarball_path):
+                print_log("INFO", f"Downloading {self.download_url}...", tab_level=3)
+                urllib.request.urlretrieve(self.download_url, tarball_path)
+                print_log("INFO", f"Downloaded to {tarball_path}", tab_level=3)
+            else:
+                print_log("INFO", f"Tarball already exists locally: {tarball_path}", tab_level=3)
+            need_extract = True
 
-        return self.repo_dir, need_extract
+        return tarball_path, need_extract
 
-    def extract(self, _unused_path):
-        """
-        Kept for interface compatibility.
-        For this toolchain, 'extract' means running the build script.
-        """
-        if os.path.exists(self.install_dir):
-            print("[INFO] Toolchain already built, skipping build.")
-            return
+    def _resolve_local_prefix(self):
+        candidate_prefixes = [
+            os.path.join(self.toolchain_dir, "bin", "v850-elf-"),
+            os.path.join(self.toolchain_parent, "bin", "v850-elf-"),
+        ]
 
-        if not os.path.exists(self.build_script):
-            raise FileNotFoundError(
-                f"Build script not found: {self.build_script}"
+        for prefix in candidate_prefixes:
+            gcc_path = f"{prefix}gcc"
+            if os.path.isfile(gcc_path):
+                self.toolchain_prefix = prefix
+                self.toolchain_gcc = gcc_path
+                return prefix
+
+        return None
+
+    def extract(self, tarball_path):
+        extract_parent = self.toolchain_parent
+
+        print_log("INFO", f"Extracting {tarball_path} to {extract_parent}...", tab_level=3)
+
+        with tarfile.open(tarball_path, "r:gz") as tar:
+            top_level_names = set()
+
+            for member in tar.getmembers():
+                member_name = member.name
+                while member_name.startswith("./"):
+                    member_name = member_name[2:]
+                member_name = member_name.lstrip("/")
+                if not member_name:
+                    continue
+
+                parts = member_name.split("/")
+                if parts[0] and parts[0] != ".":
+                    top_level_names.add(parts[0])
+
+            top_level_dir = list(top_level_names)[0] if len(top_level_names) == 1 else None
+            tar.extractall(path=extract_parent)
+
+        if os.path.exists(tarball_path):
+            os.remove(tarball_path)
+
+        if top_level_dir:
+            extracted_folder = os.path.join(extract_parent, top_level_dir)
+            if extracted_folder != self.toolchain_dir and os.path.isdir(extracted_folder):
+                if os.path.exists(self.toolchain_dir):
+                    shutil.rmtree(self.toolchain_dir)
+                os.rename(extracted_folder, self.toolchain_dir)
+        else:
+            print_log("WARNING", "No single top-level directory found in tarball", tab_level=3)
+
+        if not self._resolve_local_prefix():
+            raise RuntimeError(
+                "V850 toolchain install failed after extraction: "
+                f"missing compiler at {self.toolchain_gcc} and "
+                f"{os.path.join(self.toolchain_parent, 'bin', 'v850-elf-gcc')}"
             )
 
-        print("[INFO] Building v850-elf toolchain...")
-        subprocess.check_call(
-            ["bash", self.build_script],
-            cwd=self.repo_dir
-        )
+        print_log("INFO", f"Extracted to {self.toolchain_dir}", tab_level=3)
 
     def install(self):
-        """
-        Clone, build, and return the toolchain prefix.
-        Matches arm_none_eabi.install() behavior.
-        """
         path = shutil.which("v850-elf-gcc")
         is_installed = False
 
         if path:
-            result = subprocess.run(
-                [path, "--version"],
-                stdout=subprocess.PIPE,
-                text=True
-            )
-            if "v850" in result.stdout.lower():
+            result = subprocess.run([path, "--version"], stdout=subprocess.PIPE, text=True)
+            if result.returncode == 0 and result.stdout and "v850" in result.stdout.lower():
                 is_installed = True
 
         if not is_installed:
-            toolchain_dir, need_extract = self.fetch_sources()
+            tarball_path, need_extract = self.fetch_sources()
             if need_extract:
-                self.extract(toolchain_dir)
+                self.extract(tarball_path)
 
-            toolchain_prefix = os.path.join(
-                self.install_dir, "bin", "v850-elf-"
-            )
-            return toolchain_prefix
+            if not self._resolve_local_prefix():
+                raise RuntimeError(
+                    "V850 toolchain install failed: missing compiler at "
+                    f"{self.toolchain_gcc}"
+                )
+
+            return self.toolchain_prefix
         else:
-            print("[INFO] v850-elf-gcc already installed.")
+            print_log("INFO", "v850-elf-gcc already installed.", tab_level=3)
             return "v850-elf-"
