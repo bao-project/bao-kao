@@ -307,6 +307,30 @@ class test_framework:
                         return True
             return False
 
+        def extract_benchmark_description(source_dir):
+            pattern = re.compile(r"BAO_BENCHMARK_DESC\s*:\s*(.+)")
+            for root, _, files in os.walk(source_dir):
+                for file_name in sorted(files):
+                    if not file_name.endswith(".c"):
+                        continue
+
+                    source_path = os.path.join(root, file_name)
+                    try:
+                        with open(source_path, "r", encoding="utf8") as source_file:
+                            for line in source_file:
+                                match = pattern.search(line)
+                                if match:
+                                    description = match.group(1).strip().rstrip("*/").strip()
+                                    if description:
+                                        return description
+                    except OSError as exc:
+                        print_log(
+                            "WARNING",
+                            f"Could not read benchmark source '{source_path}' for description: {exc}.",
+                            tab_level=1
+                        )
+            return None
+
         benchmark_dirs = sorted(
             entry for entry in os.listdir(benchmark_src_root)
             if os.path.isdir(os.path.join(benchmark_src_root, entry))
@@ -347,6 +371,7 @@ class test_framework:
             # Benchmark IDs follow discovery order from tests/benchs/src/benchmarks.
             # We only assign IDs to runnable benchmarks (matching config dir with YAML files).
             bench_nr = len(self.benchmarks)
+            benchmark_description = extract_benchmark_description(benchmark_src_dir)
 
             self.benchmarks.append(
                 {
@@ -357,7 +382,7 @@ class test_framework:
                     "name": benchmark_name,
                     "setup": setup_name,
                     "guests": ["baremetal_benchmark"],
-                    "description": f"Benchmark '{benchmark_name}'",
+                    "description": benchmark_description or f"Benchmark '{benchmark_name}'",
                     "file": benchmark_name,
                     "benchmark": benchmark_name,
                 }
