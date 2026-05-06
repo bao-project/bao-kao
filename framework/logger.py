@@ -20,7 +20,7 @@ class TestLogger:
     """
     Test logger class
     """
-    def __init__(self, cpu_freq, timer_freq):
+    def __init__(self, cpu_freq, timer_freq, benchmark_name=None):
         self.test_tags = {
             'c':            "[TESTF-C]",
             'py':           "[TESTF-PY]",
@@ -52,6 +52,7 @@ class TestLogger:
         self.TEST_RESULTS = ''
         self.cpu_freq = cpu_freq
         self.timer_freq = timer_freq
+        self.benchmark_name = benchmark_name
 
     def print_message(self, message, message_type="info"):
         """
@@ -175,80 +176,84 @@ class TestLogger:
 
         RESULT_TAG = "[SAMPLE]"
 
-
-        def _parse_samples(lines, result_tag=RESULT_TAG):
-            results = []
+        def _extract_samples(lines):
+            values = []
             for line in lines:
-                if result_tag in line:
+                if RESULT_TAG in line:
                     try:
-                        results.append(int(line.split(result_tag)[-1].strip()))
+                        values.append(float(line.split(RESULT_TAG)[-1].strip()))
                     except ValueError:
                         pass
-            return results
+            return values
 
-        def _stats(xs):
-            if not xs:
+        def _extract_ctx_switch_values(lines):
+            values = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped.startswith("Ctx switch:"):
+                    continue
+                _, raw_value = stripped.split(":", 1)
+                raw_value = raw_value.strip()
+                try:
+                    values.append(float(raw_value))
+                except ValueError:
+                    pass
+            return values
+
+        def _stats(values):
+            if not values:
                 return None
-            n = len(xs)
-            avg = sum(xs) / n
-            mx = max(xs)
-            mn = min(xs)
-            var = sum((x - avg) ** 2 for x in xs) / n  # population variance
-            std = var ** 0.5
-            return {"n": n, "avg": avg, "max": mx, "min": mn, "std": std, "var": var}
+            n_values = len(values)
+            avg_value = sum(values) / n_values
+            max_value = max(values)
+            min_value = min(values)
+            variance = sum((value - avg_value) ** 2 for value in values) / n_values
+            std_dev = variance ** 0.5
+            return {
+                "count": n_values,
+                "average": avg_value,
+                "std_dev": std_dev,
+                "max": max_value,
+                "min": min_value,
+            }
 
-        def _cycles_to_us(cycles):
-            if self.timer_freq <= 0:
-                return float("nan")
-            return (cycles / self.timer_freq) * 1e6
+        def _format_value(value):
+            if float(value).is_integer():
+                return str(int(value))
+            return f"{value:.3f}"
 
-        def _time_unit_and_scale(avg_cycles):
-            avg_us = _cycles_to_us(avg_cycles)
-            if avg_us < 1:
-                return "ns", 1e3
-            return "us", 1.0
-
-        def _print_table(xs):
+        def _print_table(values):
             from prettytable import PrettyTable
 
-            s = _stats(xs)
-            if s is None:
-                print("No [SAMPLE] results found.")
+            summary = _stats(values)
+            if summary is None:
+                print("No benchmark numeric results found.")
                 return
 
+            benchmark_label = self.benchmark_name if self.benchmark_name else "benchmark"
             table = PrettyTable()
-            table.title = f"Benchmark summary (n={s['n']} / CPU freq={self.cpu_freq} Hz)"
-            table.field_names = ["Metric", "Average", "Max", "Min", "Std Dev", "Variance"]
-
-            table.add_row([
-                "Clock cycles",
-                f"{s['avg']:.3f}", f"{s['max']:.3f}", f"{s['min']:.3f}", f"{s['std']:.3f}", f"{s['var']:.3f}",
-            ])
-
-            time_unit, scale = _time_unit_and_scale(s["avg"])
-            avg_time = _cycles_to_us(s["avg"]) * scale
-            max_time = _cycles_to_us(s["max"]) * scale
-            min_time = _cycles_to_us(s["min"]) * scale
-            std_time = _cycles_to_us(s["std"]) * scale
-
-            if self.cpu_freq <= 0:
-                var_time2 = float("nan")
-            else:
-                var_time2 = s["var"] / (self.cpu_freq ** 2) * 1e12 * (scale ** 2)
-
-            table.add_row([
-                f"Execution time ({time_unit})",
-                f"{avg_time:.3f}", f"{max_time:.3f}", f"{min_time:.3f}",
-                f"{std_time:.3f}", f"{var_time2:.3f}",
-            ])
+            table.title = "Benchmark summary"
+            table.field_names = ["Benchmark", "N", "Average", "Std Dev", "Max", "Min"]
+            table.add_row(
+                [
+                    benchmark_label,
+                    summary["count"],
+                    _format_value(summary["average"]),
+                    _format_value(summary["std_dev"]),
+                    _format_value(summary["max"]),
+                    _format_value(summary["min"]),
+                ]
+            )
 
             print(table)
 
-        _print_table(_parse_samples(serial_results))
+        sample_values = _extract_samples(serial_results)
+        values = sample_values if sample_values else _extract_ctx_switch_values(serial_results)
+        _print_table(values)
         self.list_events['event_thread_finished'].set()
 
 
-    def echo_log_none(self):
+    def echo_log_none(self, _serial_results=None):
         """
         Do not print any serial results.
         """
@@ -362,7 +367,15 @@ class TestLogger:
 
                 if res_log:
                     handle_test_completion(res_log, boot_failure, is_benchmark)
-                    self.log_level[echo](res_log)
+                    if is_benchmark:
+                        if echo == "full":
+                            self.echo_log_full(res_log)
+                        elif echo == "none":
+                            self.echo_log_none(res_log)
+                        else:
+                            self.echo_log_benchmark(res_log)
+                    else:
+                        self.log_level[echo](res_log)
 
         finally:
             try:

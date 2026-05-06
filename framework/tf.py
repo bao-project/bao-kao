@@ -435,8 +435,12 @@ class test_framework:
             'hypervisor_srcs': args.hyp_srcs,
         }
 
-    def launch_test(self, run_bin, irq_flags, setup, echo, platform):
-        logger_inst = logger.TestLogger(platform.cpu_freq, platform.timer_freq)
+    def launch_test(self, run_bin, irq_flags, setup, echo, platform, benchmark_name=None):
+        logger_inst = logger.TestLogger(
+            platform.cpu_freq,
+            platform.timer_freq,
+            benchmark_name=benchmark_name if self.run_type == "benchmark" else None
+        )
 
         guests_bins = os.path.join(self.wrkdir, "guests", "build")
 
@@ -867,8 +871,8 @@ def write_config(config_path, platform):
     return output_c_path
 
 def launch_tests(tf, tests, platform, wrkdir):
-    # Aggregate workloads based on setup so we can reuse one image build per setup.
-    group_key = "setup"
+    # Aggregate tests by setup and benchmarks by benchmark name.
+    group_key = "benchmark" if tf.run_type == "benchmark" else "setup"
     setup_groups = {}
     for test in tests:
         setup = test.get(group_key) or test.get("setup")
@@ -941,7 +945,14 @@ def launch_tests(tf, tests, platform, wrkdir):
         if tf.runtime_config.get("firmware_build", True):
             platform.build_firmware(run_bin, interrupt_flags)
 
-        tf.launch_test(run_bin, interrupt_flags, setup_name, tf.runtime_config.get("echo", "tf"), platform)
+        tf.launch_test(
+            run_bin,
+            interrupt_flags,
+            setup_name,
+            tf.runtime_config.get("echo", "tf"),
+            platform,
+            benchmark_name=benchmark_name if is_benchmark else None
+        )
 
 def main():
     print_log("INFO", "Starting test framework...", tab_level=0)
