@@ -3,67 +3,130 @@
 
 import os
 import urllib.request
-from urllib.request import Request, urlopen
 import tarfile
 import shutil
 import subprocess
-import zipfile
+import sys
+
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
+from constants import print_log
+
 
 class tricore_elf:
     def __init__(self, toolchain_dir, host_platform="x86_64"):
         self.toolchain_version = "09-2025"
         self.toolchain_dir = toolchain_dir
-        self.host_platform = host_platform
-        self.zip_path = toolchain_dir + ".zip"
+        self.toolchain_parent = os.path.dirname(self.toolchain_dir)
 
-        self.download_url = f"https://softwaretools-hosting.infineon.com/packages/com.ifx.tb.tool.aurixgcc/versions/{self.toolchain_version}/artifacts/aurixgcc_09-2025_Linux_{self.host_platform}.zip/download"
-        os.makedirs(os.path.dirname(self.toolchain_dir), exist_ok=True)
+        # Map uname -m output to the release tarball naming convention
+        platform_map = {
+            "x86_64": "Linux_x86-64",
+            "aarch64": "Linux_aarch64",
+        }
+        self.host_platform = platform_map.get(host_platform, host_platform)
 
+        self.toolchain_prefix = os.path.join(self.toolchain_dir, "bin", "tricore-elf-")
+        self.toolchain_gcc = f"{self.toolchain_prefix}gcc"
+
+        tarball_name = f"aurixgcc_{self.toolchain_version}_{self.host_platform}.tar.xz"
+        self.download_url = (
+            f"https://github.com/bao-project/bao-tricore-toolchain/releases/download/"
+            f"aurixgcc_{self.toolchain_version}_{self.host_platform}/{tarball_name}"
+        )
+
+        os.makedirs(self.toolchain_parent, exist_ok=True)
+
+    def _resolve_local_prefix(self):
+        candidate_prefixes = [
+            os.path.join(self.toolchain_dir, "bin", "tricore-elf-"),
+            os.path.join(self.toolchain_parent, "bin", "tricore-elf-"),
+        ]
+        for prefix in candidate_prefixes:
+            gcc_path = f"{prefix}gcc"
+            if os.path.isfile(gcc_path):
+                self.toolchain_prefix = prefix
+                self.toolchain_gcc = gcc_path
+                return prefix
+        return None
 
     def fetch_sources(self):
-
-        print(f"Download the toolchain tarball if not present.")
-        print(f"Toolchain dir:{self.toolchain_dir}"),
         need_extract = False
-        if not os.path.exists(self.toolchain_dir):
-            print(f"[INFO] Downloading {self.download_url}...")
-            urllib.request.urlretrieve(self.download_url, self.zip_path)
-            input(f"[INFO] Download complete. Press Enter to continue...")
-            print(f"[INFO] Downloaded to {self.toolchain_dir}")
-            need_extract = True
+        tarball_path = f"{self.toolchain_dir}.tar.xz"
+
+        if self._resolve_local_prefix():
+            print_log("INFO", "Toolchain already exists locally", tab_level=3)
         else:
-            print(f"[INFO] Toolchain already exists: {self.toolchain_dir}")
-        return self.toolchain_dir, need_extract
+            if not os.path.exists(tarball_path):
+                print_log("INFO", f"Downloading {self.download_url}...", tab_level=3)
+                urllib.request.urlretrieve(self.download_url, tarball_path)
+                print_log("INFO", f"Downloaded to {tarball_path}", tab_level=3)
+            else:
+                print_log("INFO", f"Tarball already exists locally: {tarball_path}", tab_level=3)
+            need_extract = True
+
+        return tarball_path, need_extract
 
     def extract(self, tarball_path):
-        """Extract the tarball into self.toolchain_dir"""
-        extract_parent = os.path.dirname(self.toolchain_dir)
+        extract_parent = self.toolchain_parent
 
-        print(f"[INFO] Extracting {tarball_path}...")
-        with zipfile.ZipFile(tarball_path, 'r') as zip_ref:
-            zip_ref.extractall(self.toolchain_dir)
+        print_log("INFO", f"Extracting {tarball_path} to {extract_parent}...", tab_level=3)
 
-        print(f"[INFO] Extracted to {self.toolchain_dir}")
+        with tarfile.open(tarball_path, "r:xz") as tar:
+            top_level_names = set()
+            for member in tar.getmembers():
+                member_name = member.name
+                while member_name.startswith("./"):
+                    member_name = member_name[2:]
+                member_name = member_name.lstrip("/")
+                if not member_name:
+                    continue
+                parts = member_name.split("/")
+                if parts[0] and parts[0] != ".":
+                    top_level_names.add(parts[0])
+
+            top_level_dir = list(top_level_names)[0] if len(top_level_names) == 1 else None
+            tar.extractall(path=extract_parent)
+
+        if os.path.exists(tarball_path):
+            os.remove(tarball_path)
+
+        if top_level_dir:
+            extracted_folder = os.path.join(extract_parent, top_level_dir)
+            if extracted_folder != self.toolchain_dir and os.path.isdir(extracted_folder):
+                if os.path.exists(self.toolchain_dir):
+                    shutil.rmtree(self.toolchain_dir)
+                os.rename(extracted_folder, self.toolchain_dir)
+        else:
+            print_log("WARNING", "No single top-level directory found in tarball", tab_level=3)
+
+        if not self._resolve_local_prefix():
+            raise RuntimeError(
+                "TriCore toolchain install failed after extraction: "
+                f"missing compiler at {self.toolchain_gcc}"
+            )
+
+        print_log("INFO", f"Extracted to {self.toolchain_dir}", tab_level=3)
 
     def install(self):
-        """Download, extract, and verify the toolchain."""
-
         path = shutil.which("tricore-elf-gcc")
         is_installed = False
-        if path:
-            #result = subprocess.run([path, "--version"], stdout=subprocess.PIPE, text=True)
-            #version_line = result.stdout.splitlines()[0]
-            #if self.toolchain_version in version_line:
-            is_installed = True
-        if not is_installed:
-            print(f"[INFO] Please download the tricore-elf- toolchain from")
-            print(f"[INFO] https://softwaretools-hosting.infineon.com/packages/com.ifx.tb.tool.aurixgcc/versions/09-2025/artifacts/aurixgcc_09-2025_Linux_x86-x64.zip/download")
-            #toolchain_dir, need_extract = self.fetch_sources()
-            #if need_extract:
-            #    self.extract(self.zip_path)
-            #toolchain_dir += "/bin/tricore-elf-"
-            #return toolchain_dir
-        else:
-            print(f"[INFO] tricore-gcc already installed and up to date.")
-            return "tricore-elf-"
 
+        if path:
+            result = subprocess.run([path, "--version"], stdout=subprocess.PIPE, text=True)
+            if result.returncode == 0 and result.stdout:
+                is_installed = True
+
+        if not is_installed:
+            tarball_path, need_extract = self.fetch_sources()
+            if need_extract:
+                self.extract(tarball_path)
+            if not self._resolve_local_prefix():
+                raise RuntimeError(
+                    "TriCore toolchain install failed: missing compiler at "
+                    f"{self.toolchain_gcc}"
+                )
+            return self.toolchain_prefix
+        else:
+            print_log("INFO", "tricore-elf-gcc already installed.", tab_level=3)
+            return "tricore-elf-"

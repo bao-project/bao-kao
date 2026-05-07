@@ -29,7 +29,7 @@ class bao(generic_hypervisor):
             f"PLATFORM={platform}",
             f"CONFIG_REPO={config_repo}",
             f"CONFIG={config_name}",
-            f"CPPFLAGS=-DBAO_WRKDIR_IMGS={wrkdir_imgs}",
+            f"CPPFLAGS=-DBAO_WRKDIR_IMGS={wrkdir_imgs}"
         ]
         print("env in build:", env)
         self.run_cmd(make_cmd, cwd=self.srcs_path, env=env)

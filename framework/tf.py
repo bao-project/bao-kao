@@ -741,6 +741,26 @@ def write_config(config_path, platform, output_dir=None):
             }
         )
 
+    # Pre-scan arch configs for list-typed fields (pointer arrays in C structs).
+    # We generate static array variables for them rather than brace initializers,
+    # which are invalid for pointer fields and rejected by strict compilers.
+    arch_array_vars = {}  # (vm_idx, arch_key) -> (var_name, [item_literals])
+    for vm_idx, vm in enumerate(vm_entries):
+        platform_cfg = vm["platform"]
+        arch_cfg = platform_cfg.get("arch", {})
+        arch_cfg = arch_cfg if isinstance(arch_cfg, dict) else {}
+        for arch_key, arch_value in _flatten_c_designators(
+            {key: value for key, value in arch_cfg.items() if key != "gic"}
+        ):
+            if isinstance(arch_value, list):
+                safe_key = re.sub(r"[^a-zA-Z0-9_]", "_", arch_key)
+                var_name = f"vm{vm_idx}_{safe_key}"
+                item_literals = [
+                    lit for lit in (_to_c_literal(item) for item in arch_value)
+                    if lit is not None
+                ]
+                arch_array_vars[(vm_idx, arch_key)] = (var_name, item_literals)
+
     def image_mode(image_cfg):
         has_base = "base_addr" in image_cfg
         has_load = "load_addr" in image_cfg
@@ -764,6 +784,13 @@ def write_config(config_path, platform, output_dir=None):
             image_declared = True
 
     if image_declared:
+        output_lines.append("")
+
+    if arch_array_vars:
+        for (vm_idx, arch_key), (var_name, item_literals) in arch_array_vars.items():
+            output_lines.append(
+                f"static unsigned long {var_name}[] = {{{', '.join(item_literals)}}};"
+            )
         output_lines.append("")
 
     output_lines.extend(
@@ -899,7 +926,10 @@ def write_config(config_path, platform, output_dir=None):
             for arch_key, arch_value in _flatten_c_designators(
                 {key: value for key, value in arch_cfg.items() if key != "gic"}
             ):
-                arch_literal = _to_c_initializer_literal(arch_value)
+                if (vm_idx, arch_key) in arch_array_vars:
+                    arch_literal = arch_array_vars[(vm_idx, arch_key)][0]
+                else:
+                    arch_literal = _to_c_initializer_literal(arch_value)
                 if arch_literal is None:
                     continue
                 if platform_name == "qemu-aarch64-virt" and arch_key in {"gic.gicd_addr", "gic.gicr_addr"}:
