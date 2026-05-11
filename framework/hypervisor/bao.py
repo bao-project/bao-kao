@@ -10,14 +10,14 @@ from generic import generic_hypervisor
 
 
 class bao(generic_hypervisor):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, wrkdir):
+        super().__init__(wrkdir)
         self.git_repo = "https://github.com/bao-project/bao-hypervisor.git"
         self.git_rev = "v2.0.0"
     
     def fetch_sources(self, hypervisor_srcs):
         if hypervisor_srcs == "":
-            self.srcs_path = os.path.join(cur_dir, "../wrkdir", "hypervisor", "bao")
+            self.srcs_path = os.path.join(self.wrkdir, "hypervisor", "bao")
             self.clone_hypervisor(self.git_repo, self.git_rev, self.srcs_path)
         else:
             self.srcs_path = hypervisor_srcs
@@ -31,7 +31,7 @@ class bao(generic_hypervisor):
             f"CONFIG={config_name}",
             f"CPPFLAGS=-DBAO_WRKDIR_IMGS={wrkdir_imgs}",
         ]
-
+        print("env in build:", env)
         self.run_cmd(make_cmd, cwd=self.srcs_path, env=env)
 
         bin_name = "bao.bin"

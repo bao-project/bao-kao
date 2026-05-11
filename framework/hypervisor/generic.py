@@ -7,14 +7,16 @@ sys.path.append(os.path.abspath(os.path.join(cur_dir, "../")))
 from constants import print_log
 
 class generic_hypervisor:
-    def __init__(self, srcs_path=""):
+    def __init__(self, wrkdir, srcs_path=""):
+        self.wrkdir = wrkdir
         self.srcs_path = srcs_path
         self.git_repo = ""
         self.git_rev = ""
 
 
     def run_cmd(self, cmd, cwd=None, env=None):
-        p = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        p = subprocess.run(cmd, cwd=cwd, env=env, text=True)
+        print("env:", env)
         if p.returncode != 0:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
         
