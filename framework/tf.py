@@ -212,7 +212,7 @@ class test_framework:
         hypervisor_class = hypervisor_dict.get(self.hypervisor)
         if hypervisor_class is None:
             raise ValueError(f"Unsupported hypervisor mode '{self.hypervisor}'.")
-        hypervisor_instance = hypervisor_class()
+        hypervisor_instance = hypervisor_class(wrkdir)
 
         hypervisor_instance.fetch_sources(self.hypervisor_srcs)
         hypervisor_instance.clean(hypervisor_instance.srcs_path)
@@ -543,10 +543,14 @@ class test_framework:
             return
 
     def cleanup(self):
-        wkdir_path = os.path.join(TF_ROOT, "framework", "wrkdir")
-        if os.path.exists(wkdir_path):
-            print("removing guests build artifacts at:", wkdir_path)
-            shutil.rmtree(wkdir_path)
+        guest_build_path = os.path.join(self.wrkdir, "guests")
+        if os.path.exists(guest_build_path):
+            print_log("INFO", f"Removing guest build artifacts at: {guest_build_path}", tab_level=1)
+            shutil.rmtree(guest_build_path)
+        hypervisor_path = os.path.join(self.wrkdir, "hypervisor")
+        if os.path.exists(hypervisor_path):
+            print_log("INFO", f"Removing hypervisor sources at: {hypervisor_path}", tab_level=1)
+            shutil.rmtree(hypervisor_path)
 
     def generate_id_readme(self):
         table_tests = PrettyTable()
@@ -973,6 +977,16 @@ def launch_tests(tf, tests, platform, wrkdir):
             setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
             vm_configs = read_config(setup_cfg_path, platform)
             generated_cfg_dir = os.path.join(wrkdir, "configs", "tests", setup_name)
+            # if there is a folder with the same name as the platform, copy its contents to the generated config directory to preserve any additional files, then write the generated config file there as well
+            platform_cfg_dir = os.path.join(setup_cfg_path, _get_platform_name(platform))
+            if os.path.isdir(platform_cfg_dir):
+                for item in os.listdir(platform_cfg_dir):
+                    s = os.path.join(platform_cfg_dir, item)
+                    d = os.path.join(generated_cfg_dir, item)
+                    if os.path.isdir(s):
+                        shutil.copytree(s, d, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(s, d)
             generated_cfg_file = write_config(setup_cfg_path, platform, output_dir=generated_cfg_dir)
             bao_cfg_path_abs = os.path.abspath(os.path.dirname(generated_cfg_file))
             print_log(
