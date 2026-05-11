@@ -55,7 +55,8 @@ class CLI(InputProvider):
 
         parser.add_argument("-x", "--test-exclude",
                     metavar="ID[,ID,...]",
-                    help="Assumes all tests are executed, excluding a comma-separated list of test IDs.",
+                    help="Comma-separated list of test IDs to exclude from the selected tests.\n"
+                         "Can be combined with --test (including bare --test, which means all tests).",
                     default=False)
 
         parser.add_argument("--no-logger",
@@ -95,9 +96,12 @@ class CLI(InputProvider):
                     default=False)
 
         parser.add_argument("-H", "--hypervisor",
-                    metavar="<bao>",
+                    metavar="<bao|none>",
                     required=False,
-                    help="Hypervisor to use (default: bao). Currently, only bao is supported.",
+                    help="Hypervisor mode to use (default: bao):\n"
+                         "bao  - build/run with Bao hypervisor\n"
+                         "none - run directly on platform without hypervisor\n"
+                         "Note: 'standalone' is accepted as a deprecated alias for 'none'.",
                     default="bao")
 
         parser.add_argument("--hyp-srcs",
@@ -123,9 +127,6 @@ class CLI(InputProvider):
         if args.platform.strip() == "":
             raise ValueError("Platform cannot be empty. Please specify a valid platform using the -p or --platform argument.")
 
-        if args.test is not None and args.test_exclude:
-            raise ValueError("Cannot specify both --test and --test-exclude arguments. Please choose one or the other.")
-
         if args.benchmark is not None and args.benchmark_exclude:
             raise ValueError("Cannot specify both --benchmark and --benchmark-exclude arguments. Please choose one or the other.")
 
@@ -149,5 +150,16 @@ class CLI(InputProvider):
         valid_echo_options = {"full", "tf", "none"}
         if args.echo not in valid_echo_options:
             raise ValueError(f"Invalid echo option '{args.echo}'. Valid options are: {', '.join(valid_echo_options)}.")
+
+        hypervisor = str(args.hypervisor).strip().lower()
+        if hypervisor == "standalone":
+            hypervisor = "none"
+
+        valid_hypervisors = {"bao", "none"}
+        if hypervisor not in valid_hypervisors:
+            raise ValueError(
+                f"Invalid hypervisor '{args.hypervisor}'. Valid options are: {', '.join(sorted(valid_hypervisors))}."
+            )
+        args.hypervisor = hypervisor
 
         return args

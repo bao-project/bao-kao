@@ -205,10 +205,13 @@ class test_framework:
 
         hypervisor_dict = {
             "bao" : bao,
-            "standalone" : standalone
+            "none" : standalone,
+            "standalone" : standalone,
         }
 
         hypervisor_class = hypervisor_dict.get(self.hypervisor)
+        if hypervisor_class is None:
+            raise ValueError(f"Unsupported hypervisor mode '{self.hypervisor}'.")
         hypervisor_instance = hypervisor_class()
 
         hypervisor_instance.fetch_sources(self.hypervisor_srcs)
@@ -429,19 +432,32 @@ class test_framework:
         all_ids = [workload['id'] for workload in workloads]
         workloads_to_run = []
 
-        if include_ids is not None and include_ids != "all":
-            try:
-                workloads_to_run = [int(workload_id) for workload_id in include_ids]
-            except ValueError as exc:
-                raise ValueError(f"{self.run_type.capitalize()} IDs must be integers.") from exc
-        elif exclude_ids:
-            try:
-                excluded = {int(workload_id) for workload_id in exclude_ids}
-            except ValueError as exc:
-                raise ValueError(f"Excluded {self.run_type} IDs must be integers.") from exc
-            workloads_to_run = [workload_id for workload_id in all_ids if workload_id not in excluded]
-        else:
+        def parse_id_list(id_list, label):
+            parsed_ids = []
+            invalid_ids = []
+
+            for raw_id in id_list:
+                id_value = str(raw_id).strip()
+                try:
+                    parsed_ids.append(int(id_value))
+                except ValueError:
+                    invalid_ids.append(id_value if id_value else "<empty>")
+
+            if invalid_ids:
+                raise ValueError(
+                    f"{label} IDs must be integers. Invalid values: {', '.join(invalid_ids)}."
+                )
+
+            return parsed_ids
+
+        if include_ids is None or include_ids == "all":
             workloads_to_run = all_ids
+        else:
+            workloads_to_run = parse_id_list(include_ids, self.run_type.capitalize())
+
+        if exclude_ids:
+            excluded = set(parse_id_list(exclude_ids, f"Excluded {self.run_type}"))
+            workloads_to_run = [workload_id for workload_id in workloads_to_run if workload_id not in excluded]
 
         workload_label = self.run_type.capitalize()
         print_log("INFO", f"Validating {self.run_type} IDs...", tab_level=0)
@@ -527,10 +543,10 @@ class test_framework:
             return
 
     def cleanup(self):
-        guests_dir = os.path.join(CUR_DIR, "wrkdir", "guests")
-        if os.path.exists(guests_dir):
-            print("removing guests build artifacts at:", guests_dir)
-            shutil.rmtree(guests_dir)
+        wkdir_path = os.path.join(TF_ROOT, "framework", "wrkdir")
+        if os.path.exists(wkdir_path):
+            print("removing guests build artifacts at:", wkdir_path)
+            shutil.rmtree(wkdir_path)
 
     def generate_id_readme(self):
         table_tests = PrettyTable()
@@ -684,7 +700,7 @@ def read_config(config_path, platform):
     return vm_list_config
 
 
-def write_config(config_path, platform):
+def write_config(config_path, platform, output_dir=None):
     yaml_path = _resolve_yaml_config_path(config_path, platform)
     platform_name = _get_platform_name(platform)
 
@@ -907,9 +923,14 @@ def write_config(config_path, platform):
 
     output_lines.extend(["    },", "};", ""])
 
-    output_c_path = os.path.splitext(yaml_path)[0] + ".c"
-    if os.path.basename(os.path.dirname(yaml_path)) == platform_name:
-        output_c_path = os.path.join(os.path.dirname(yaml_path), "config.c")
+    if output_dir is not None:
+        output_dir = os.path.abspath(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        output_c_path = os.path.join(output_dir, f"{platform_name}.c")
+    else:
+        output_c_path = os.path.splitext(yaml_path)[0] + ".c"
+        if os.path.basename(os.path.dirname(yaml_path)) == platform_name:
+            output_c_path = os.path.join(os.path.dirname(yaml_path), "config.c")
 
     with open(output_c_path, "w") as output_file:
         output_file.write("\n".join(output_lines))
@@ -943,15 +964,17 @@ def launch_tests(tf, tests, platform, wrkdir):
                 raise FileNotFoundError(f"Could not find benchmark config directory '{setup_cfg_path}'.")
 
             vm_configs = read_config(setup_cfg_path, platform)
-            bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
-            write_config(setup_cfg_path, platform)
+            generated_cfg_dir = os.path.join(wrkdir, "configs", "benchmarks", setup_name)
+            generated_cfg_file = write_config(setup_cfg_path, platform, output_dir=generated_cfg_dir)
+            bao_cfg_path_abs = os.path.abspath(os.path.dirname(generated_cfg_file))
             print_log("INFO", f"Preparing Benchmark IDs {test_ids}: {benchmark_name}.", tab_level=0)
         else:
             setup_name = str(setup).lower()
             setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
             vm_configs = read_config(setup_cfg_path, platform)
-            bao_cfg_path_abs = os.path.abspath(setup_cfg_path)
-            write_config(setup_cfg_path, platform)
+            generated_cfg_dir = os.path.join(wrkdir, "configs", "tests", setup_name)
+            generated_cfg_file = write_config(setup_cfg_path, platform, output_dir=generated_cfg_dir)
+            bao_cfg_path_abs = os.path.abspath(os.path.dirname(generated_cfg_file))
             print_log(
                 "INFO",
                 f"Preparing Test IDs {test_ids}: {grouped_tests[0]['suite']} - {grouped_tests[0]['name']} (and others with same setup)...",

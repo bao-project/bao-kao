@@ -113,14 +113,14 @@ class baremetal_test(baremetal):
             f"TESTF_TESTS_DIR={tests_src_dst}"
         ]
 
-        if self.list_suites:
-            suites = " ".join(str(self.list_suites).split())
-            if suites:
-                make_cmd.append(f"SUITES={suites}")
         if self.list_tests:
             tests = " ".join(str(self.list_tests).split())
             if tests:
                 make_cmd.append(f"TESTS={tests}")
+        elif self.list_suites:
+            suites = " ".join(str(self.list_suites).split())
+            if suites:
+                make_cmd.append(f"SUITES={suites}")
 
         if arch == "aarch64" and irq_flags:
             gic_version = irq_flags.get("GIC_version", "GICV2")

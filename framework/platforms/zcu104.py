@@ -42,7 +42,10 @@ def generate_boot_txt(
     bao_addr: str = "0x200000",
     standalone_addr: str = "0x20000000",
 ) -> str:
-    if mode not in ("bao", "standalone"):
+    if mode == "standalone":
+        mode = "none"
+
+    if mode not in ("bao", "none"):
         raise ValueError(f"Unsupported mode: {mode}")
 
     load_addr = bao_addr if mode == "bao" else standalone_addr
