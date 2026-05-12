@@ -29,7 +29,7 @@ class baremetal:
         self.benchmark = benchmark
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "7119db6498542c85cba49c6b38bf0097c72572a3"
+        self.git_rev = "275d42f2821c994b1cb0e31d8c29880bea46a14d"
 
         if local_repo_path:
             self.use_local_repo = True
