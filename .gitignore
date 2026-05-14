@@ -1,4 +1,2 @@
-.clang-format
-bao_test.c
-testf_entry.c
-framework/output/*
+**/__pycache__/
+**/wrkdir/
