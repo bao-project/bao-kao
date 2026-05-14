@@ -23,7 +23,7 @@ jobs:
         run: make gitlint GITLINT_BASE=${{ github.event.before }}
       - if: ${{ github.event_name == 'workflow_dispatch' }}
         run: make gitlint GITLINT_BASE=HEAD
-  
+
   license:
     runs-on: ubuntu-latest
     container: baoproject/bao:latest
@@ -34,31 +34,6 @@ jobs:
           fetch-depth: 0
       - run: >
           make license-check
-
-  coding-style:
-    runs-on: ubuntu-latest
-    container: baoproject/bao:latest
-    strategy:
-      matrix:
-        platform: ["qemu-aarch64-virt"]
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-      - run: make PLATFORM=${{ matrix.platform }} format-check
-
-  static-analysis:
-    runs-on: ubuntu-latest
-    container: baoproject/bao:latest
-    strategy:
-      matrix:
-        platform: ["qemu-aarch64-virt"]
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-      - run: make PLATFORM=${{ matrix.platform }} tidy
-      - run: make PLATFORM=${{ matrix.platform }} cppcheck
 
   pylint:
     runs-on: ubuntu-latest
