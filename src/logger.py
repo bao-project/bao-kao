@@ -115,7 +115,7 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
 
     def echo_log_tf(self, serial_results):
         """Print only the Bao Kao Framework section of the serial output."""
-        is_bkao_section = False
+        is_kao_section = False
         for line in serial_results:
             if self.test_tags["start"] in line:
                 print(
@@ -128,13 +128,13 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
                     + "========================================="
                     + "\n"
                 )
-                is_bkao_section = True
+                is_kao_section = True
 
             elif self.test_tags["end"] in line:
-                is_bkao_section = False
+                is_kao_section = False
                 print(line, end="")
 
-            if is_bkao_section:
+            if is_kao_section:
                 print(line, end="")
 
         self.list_events["event_thread_finished"].set()

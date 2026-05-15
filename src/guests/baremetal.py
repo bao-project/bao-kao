@@ -30,7 +30,7 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
         list_tests,
         list_suites,
         benchmark,
-        bkao_dir,
+        kao_dir,
         tests_srcs,
         bin_name,
         build_flags,
@@ -41,7 +41,7 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
         self.guest_name = "baremetal"
 
         self.srcs_dir = os.path.join(wrkdir, "guests", self.guest_name)
-        self.bkao_dir = bkao_dir
+        self.kao_dir = kao_dir
         self.tests_srcs = tests_srcs
         self.bin_dir = os.path.join(wrkdir, "guests", "build")
 
@@ -118,7 +118,7 @@ class BaremetalTest(Baremetal):
     def _run_codegen(self, tests_srcs_abs, tests_dst):
         """Generate the consolidated test entry source file."""
         print_log("INFO", "Running codegen.py ...", tab_level=1)
-        codegen_dir = os.path.join(self.bkao_dir, "utils")
+        codegen_dir = os.path.join(self.kao_dir, "utils")
         generated_output = os.path.join(tests_dst, "src", "testf_entry.c")
         run_cmd(
             ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],

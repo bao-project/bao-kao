@@ -12,14 +12,14 @@ class InputProvider(ABC):  # pylint: disable=too-few-public-methods
     """Interface for runtime configuration providers."""
 
     @abstractmethod
-    def bkao_config(self, platforms=None):
+    def kao_config(self, platforms=None):
         """Return validated runtime arguments."""
 
 
 class CLI(InputProvider):
     """Command-line input provider."""
 
-    def bkao_config(self, platforms=None):
+    def kao_config(self, platforms=None):
         """Parse and validate framework CLI arguments."""
         parser = argparse.ArgumentParser(
             description="Bao Testing Framework",

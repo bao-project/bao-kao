@@ -2,13 +2,13 @@ SHELL:=bash
 
 # Define directories
 root_dir:=$(realpath .)
-bkao_dir:=$(root_dir)/src
+kao_dir:=$(root_dir)/src
 
 # Instantiate CI rules
 
 include ci/ci.mk
 
-python_srcs+=$(shell find $(bkao_dir) -name "*.py")
+python_srcs+=$(shell find $(kao_dir) -name "*.py")
 $(call ci, pylint, $(python_srcs))
 
 all_files:=$(python_srcs)
