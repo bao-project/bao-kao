@@ -23,27 +23,27 @@ import logger
 # Root path anchors
 CUR_DIR = os.getcwd()
 
-BKAO_DIR = os.path.dirname(os.path.abspath(__file__))  # tests/tf/src/
-BKAO_FW_DIR = os.path.join(BKAO_DIR, "firmware")  # tests/tf/src/firmware
-BKAO_GUEST_DIR = os.path.join(BKAO_DIR, "guests")  # tests/tf/src/guests/
-BKAO_HYP_DIR = os.path.join(BKAO_DIR, "hypervisor")  # tests/tf/src/hypervisor
-BKAO_PLAT_DIR = os.path.join(BKAO_DIR, "platforms")  # tests/tf/src/platforms/
-BKAO_TOOL_DIR = os.path.join(BKAO_DIR, "toolchains")  # tests/tf/src/toolchains/
-BKAO_UTILS_DIR = os.path.join(BKAO_DIR, "utils")  # tests/tf/src/utils/
+KAO_DIR = os.path.dirname(os.path.abspath(__file__))  # tests/tf/src/
+KAO_FW_DIR = os.path.join(KAO_DIR, "firmware")  # tests/tf/src/firmware
+KAO_GUEST_DIR = os.path.join(KAO_DIR, "guests")  # tests/tf/src/guests/
+KAO_HYP_DIR = os.path.join(KAO_DIR, "hypervisor")  # tests/tf/src/hypervisor
+KAO_PLAT_DIR = os.path.join(KAO_DIR, "platforms")  # tests/tf/src/platforms/
+KAO_TOOL_DIR = os.path.join(KAO_DIR, "toolchains")  # tests/tf/src/toolchains/
+KAO_UTILS_DIR = os.path.join(KAO_DIR, "utils")  # tests/tf/src/utils/
 
-BKAO_ROOT = os.path.abspath(os.path.join(BKAO_DIR, "../"))  # tests/tf/
-TESTS_DIR = os.path.abspath(os.path.join(BKAO_ROOT, "../tests"))  # tests/tests
-BENCHS_DIR = os.path.abspath(os.path.join(BKAO_ROOT, "../benchs"))  # tests/benchs
-HYPERVISOR_DIR = os.path.abspath(os.path.join(BKAO_ROOT, "../../"))  # bao-hypervisor/
+KAO_ROOT = os.path.abspath(os.path.join(KAO_DIR, "../"))  # tests/tf/
+TESTS_DIR = os.path.abspath(os.path.join(KAO_ROOT, "../tests"))  # tests/tests
+BENCHS_DIR = os.path.abspath(os.path.join(KAO_ROOT, "../benchs"))  # tests/benchs
+HYPERVISOR_DIR = os.path.abspath(os.path.join(KAO_ROOT, "../../"))  # bao-hypervisor/
 
 # Load each module/class to system path
-sys.path.append(BKAO_DIR)
-sys.path.append(BKAO_FW_DIR)
-sys.path.append(BKAO_GUEST_DIR)
-sys.path.append(BKAO_HYP_DIR)
-sys.path.append(BKAO_PLAT_DIR)
-sys.path.append(BKAO_TOOL_DIR)
-sys.path.append(BKAO_UTILS_DIR)
+sys.path.append(KAO_DIR)
+sys.path.append(KAO_FW_DIR)
+sys.path.append(KAO_GUEST_DIR)
+sys.path.append(KAO_HYP_DIR)
+sys.path.append(KAO_PLAT_DIR)
+sys.path.append(KAO_TOOL_DIR)
+sys.path.append(KAO_UTILS_DIR)
 
 BAREMETAL_BENCHMARK = None
 if os.path.exists(BENCHS_DIR) and os.listdir(BENCHS_DIR):
@@ -223,7 +223,7 @@ class TestFramework:
                 list_tests,
                 list_suites,
                 benchmark,
-                bkao_dir=BKAO_DIR,
+                kao_dir=KAO_DIR,
                 tests_srcs=TESTS_DIR,
                 bin_name=guest_name,
                 build_flags=building_flags,
@@ -317,12 +317,12 @@ class TestFramework:
         skip = {"generic_platform.py"}
 
         print_log("INFO", "Loading platform libs...", tab_level=1)
-        for fname in os.listdir(BKAO_PLAT_DIR):
+        for fname in os.listdir(KAO_PLAT_DIR):
             if not fname.endswith(".py") or fname in skip:
                 continue
             stem = fname[:-3]
             class_n = stem.replace("-", "_")
-            fpath = os.path.join(BKAO_PLAT_DIR, fname)
+            fpath = os.path.join(KAO_PLAT_DIR, fname)
 
             spec = importlib.util.spec_from_file_location(class_n, fpath)
             mod = importlib.util.module_from_spec(spec)
@@ -330,7 +330,7 @@ class TestFramework:
 
             self.plats.append((stem, getattr(mod, class_n)))
 
-        fpath = os.path.join(BKAO_PLAT_DIR, "generic_platform.py")
+        fpath = os.path.join(KAO_PLAT_DIR, "generic_platform.py")
         spec = importlib.util.spec_from_file_location("generic_platform", fpath)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -482,7 +482,7 @@ class TestFramework:
         self.validate_workload_ids(test_ids, self.tests, "test")
 
     def parse_args(self):
-        args = CLI().bkao_config(platforms=[plat[0] for plat in self.plats])
+        args = CLI().kao_config(platforms=[plat[0] for plat in self.plats])
 
         benchmark_mode_requested = (
             args.benchmark is not None or bool(args.benchmark_exclude)
@@ -705,8 +705,8 @@ class TestFramework:
 
 test_framework = TestFramework  # pylint: disable=invalid-name
 
-def launch_tests(bkao_runner, tests, platform, wrkdir):
-    group_key = "benchmark" if bkao_runner.run_type == "benchmark" else "setup"
+def launch_tests(kao_runner, tests, platform, wrkdir):
+    group_key = "benchmark" if kao_runner.run_type == "benchmark" else "setup"
     setup_groups = {}
     for test in tests:
         setup = test.get(group_key) or test.get("setup")
@@ -728,7 +728,7 @@ def launch_tests(bkao_runner, tests, platform, wrkdir):
     for setup, grouped_tests in setup_groups.items():
         interrupt_flags = dict(base_interrupt_flags)
         test_ids = [test["id"] for test in grouped_tests]
-        is_benchmark = bkao_runner.run_type == "benchmark"
+        is_benchmark = kao_runner.run_type == "benchmark"
         platform_name = _get_platform_name(platform)
 
         if is_benchmark:
@@ -818,15 +818,15 @@ def launch_tests(bkao_runner, tests, platform, wrkdir):
                 tab_level=0,
             )
 
-        bkao_runner.hypervisor = bkao_runner.runtime_config.get("hypervisor", "bao")
-        bkao_runner.hypervisor_srcs = bkao_runner.runtime_config.get(
+        kao_runner.hypervisor = kao_runner.runtime_config.get("hypervisor", "bao")
+        kao_runner.hypervisor_srcs = kao_runner.runtime_config.get(
             "hypervisor_srcs",
             "",
         )
-        bkao_runner.test_config = {
+        kao_runner.test_config = {
             "platform": platform_name,
             "setup": setup_name,
-            "echo": bkao_runner.runtime_config.get("echo", "tf"),
+            "echo": kao_runner.runtime_config.get("echo", "tf"),
             "tests": " ".join(
                 dict.fromkeys(
                     test["name"]
@@ -846,7 +846,7 @@ def launch_tests(bkao_runner, tests, platform, wrkdir):
         }
 
         if "GIC_version" not in interrupt_flags:
-            platform_args = bkao_runner.runtime_config.get("platform_args", "")
+            platform_args = kao_runner.runtime_config.get("platform_args", "")
             if isinstance(platform_args, str):
                 platform_args = [
                     arg.strip()
@@ -866,27 +866,27 @@ def launch_tests(bkao_runner, tests, platform, wrkdir):
             f"{workload_prefix}{test_ids}: Building guests ...",
             tab_level=0,
         )
-        bkao_runner.build_guests(platform, interrupt_flags)
+        kao_runner.build_guests(platform, interrupt_flags)
 
         print_log(
             "INFO",
-            f"Building run image [{bkao_runner.hypervisor}]...",
+            f"Building run image [{kao_runner.hypervisor}]...",
             tab_level=0,
         )
-        run_bin, _bin_name, _elf_name = bkao_runner.build_run_bin(
+        run_bin, _bin_name, _elf_name = kao_runner.build_run_bin(
             wrkdir,
             bao_cfg_repo_abs,
             platform,
         )
 
-        if bkao_runner.runtime_config.get("firmware_build", True):
+        if kao_runner.runtime_config.get("firmware_build", True):
             platform.build_firmware(run_bin, interrupt_flags)
 
-        bkao_runner.launch_test(
+        kao_runner.launch_test(
             run_bin,
             interrupt_flags,
             setup_name,
-            bkao_runner.runtime_config.get("echo", "tf"),
+            kao_runner.runtime_config.get("echo", "tf"),
             platform,
             benchmark_name=benchmark_name if is_benchmark else None,
         )
@@ -897,44 +897,44 @@ def main():
     wrkdir = os.path.join(CUR_DIR, "wrkdir")
     os.makedirs(wrkdir, exist_ok=True)
 
-    bkao_runner = TestFramework(wrkdir)
+    kao_runner = TestFramework(wrkdir)
 
     print_log("INFO", "Populating tests ...", tab_level=0)
-    bkao_runner.populate_tests()
+    kao_runner.populate_tests()
     print_log("SUCCESS", "Tests populated.", tab_level=0)
 
     print_log("INFO", "Populating benchmarks ...", tab_level=0)
-    benchmarks = bkao_runner.populate_benchmarks()
+    benchmarks = kao_runner.populate_benchmarks()
     if benchmarks:
         print_log("SUCCESS", "Benchmarks populated.", tab_level=0)
     else:
         print_log("WARNING", "No runnable benchmarks discovered.", tab_level=0)
 
     print_log("INFO", "Populating platforms ...", tab_level=0)
-    bkao_runner.populate_plats()
+    kao_runner.populate_plats()
     print_log(
         "SUCCESS",
-        f"Platforms populated: {', '.join([plat[0] for plat in bkao_runner.plats])}.",
+        f"Platforms populated: {', '.join([plat[0] for plat in kao_runner.plats])}.",
         tab_level=0,
     )
 
     print_log("INFO", "Reading TF configuration ...", tab_level=0)
-    bkao_runner.parse_args()
+    kao_runner.parse_args()
     print_log("SUCCESS", "Runtime TF configuration built.", tab_level=0)
 
     print_log("INFO", "Populating guests to build ...", tab_level=0)
-    guests = bkao_runner.populate_guests(bkao_runner.tests_to_run)
+    guests = kao_runner.populate_guests(kao_runner.tests_to_run)
     print_log("SUCCESS", f"Guests populated: {', '.join(guests)}.", tab_level=0)
 
     print_log("INFO", "Cleaning up build artifacts from previous runs...", tab_level=0)
-    bkao_runner.cleanup()
+    kao_runner.cleanup()
 
     print_log("INFO", "Setting up platform...", tab_level=0)
-    requested_platform = bkao_runner.runtime_config["platform"]
-    platform_class = _resolve_platform_class(bkao_runner.plats, requested_platform)
+    requested_platform = kao_runner.runtime_config["platform"]
+    platform_class = _resolve_platform_class(kao_runner.plats, requested_platform)
     if platform_class is None:
         available_platforms = sorted(
-            {name.replace("_", "-") for name, _ in bkao_runner.plats}
+            {name.replace("_", "-") for name, _ in kao_runner.plats}
         )
         raise ValueError(
             f"Unsupported platform '{requested_platform}'. "
@@ -943,7 +943,7 @@ def main():
     plat = platform_class(wrkdir)
     plat.setup_platform()
 
-    if bkao_runner.runtime_config["toolchain_build"]:
+    if kao_runner.runtime_config["toolchain_build"]:
         plat.build_toolchain()
     else:
         plat.toolchain = plat.toolchain_prefix
@@ -954,16 +954,16 @@ def main():
             tab_level=1,
         )
 
-    test_ids = [test["id"] for test in bkao_runner.tests_to_run]
+    test_ids = [test["id"] for test in kao_runner.tests_to_run]
     print_log(
         "INFO",
-        f"Preparing to launch {bkao_runner.run_type} IDs {test_ids} "
-        f"on platform {bkao_runner.runtime_config['platform']}...",
+        f"Preparing to launch {kao_runner.run_type} IDs {test_ids} "
+        f"on platform {kao_runner.runtime_config['platform']}...",
         tab_level=0,
     )
-    launch_tests(bkao_runner, bkao_runner.tests_to_run, plat, wrkdir)
+    launch_tests(kao_runner, kao_runner.tests_to_run, plat, wrkdir)
 
-    bkao_runner.cleanup()
+    kao_runner.cleanup()
 
 if __name__ == "__main__":
     main()
