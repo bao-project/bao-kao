@@ -201,6 +201,7 @@ class QemuAarch64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=True,
         )
         pty_ports = self._wait_for_first_pty(process, stderr_path)
         return process, stderr_path, None, pty_ports
