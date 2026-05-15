@@ -202,6 +202,7 @@ class QemuRiscv64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=True,
         )
         pty_ports = self._wait_for_first_pty(process, qemu_log_path)
         return process, qemu_log_path, None, pty_ports
