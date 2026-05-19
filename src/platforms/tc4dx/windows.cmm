@@ -1,0 +1,178 @@
+; --------------------------------------------------------------------------------
+; @Title: Bao Hypervisor test launch script for TC4D9XE on TriBoard-TC4x9-COM
+; @Description:
+;   Programs the Bao hypervisor ELF and guest ELFs into flash and starts
+;   execution. Called by the test framework with ELF paths as arguments.
+; @Keywords: flash, Infineon, TC4xx, TriCore, Bao
+; @Board: TriBoard-TC4x9-COM
+; @Chip: TC4D9XE
+; @Copyright: (C) 1989-2024 Lauterbach GmbH, licensed for use with TRACE32(R) only
+; --------------------------------------------------------------------------------
+
+ENTRY &bao_elf &elf1 &elf2 &elf3
+
+LOCAL &ToolsDir
+&ToolsDir="~~/demo/tricore/hardware/tools/tc4x"
+
+; --------------------------------------------------------------------------------
+; initialize and start the debugger
+
+SYStem.CPU TC4D7XP
+
+
+CORE.ASSIGN 1. 2. 3. 4. 5. 6.
+
+; disable serial trace until it is configured
+IF Analyzer()
+  Analyzer.DISable
+SYStem.Up
+
+
+; --------------------------------------------------------------------------------
+; Check PreRequisites
+GOSUB CheckPreRequisites
+
+; --------------------------------------------------------------------------------
+; optional settings
+SYStem.Option DUALPORT ON
+SETUP.Var %SpotLight
+MAP.BOnchip 0x0--0xffffffff // force onchip-breakpoints
+
+; --------------------------------------------------------------------------------
+; Flash programming
+LOCAL &progFlash &bmhdResult
+
+; prepare flash programming (declarations)
+DO ~~/demo/tricore/flash/tc4dx.cmm CPU=TC4D9XE PREPARE_HOST
+
+; always flash — the framework always produces a fresh build
+&progFlash=TRUE()
+
+IF (&progFlash)
+(
+  ; ==== Step 0: Initialize DSPR/PSPR ====
+
+  DO &ToolsDir/meminit_host.cmm "CPU*"
+  DO &ToolsDir/meminit_host.cmm "LMU*"
+
+  ; ==== Step 1: Program TriCore code ====
+
+  ; enable flash programming
+  FLASH.ReProgram ALL
+
+  ; load hypervisor image
+  Data.LOAD.Elf "&bao_elf"
+
+  FLASH.ReProgram OFF
+
+  ; ==== Step 2: Write boot mode header ====
+
+  PRIVATE &progUcb &ucbDiff &supported &diffAddress &DMU_GP_HOST_CONFIRMA &result
+  &progUcb=TRUE()
+  ; Check if UCB is in state UNLOCKED. Other states are not supported by this script
+  &DMU_GP_HOST_CONFIRMA=Data.Long(ANC:0xF8040530)
+  &supported=(((&DMU_GP_HOST_CONFIRMA)&(0x00030000))==0x00010000)
+
+  IF !&supported
+  (
+    PRINT %ERROR "UCB_RTC_BMHD0 is not in state unlocked or unread"
+    ENDDO
+  )
+
+  ; Check if we need to program the BMHD
+  &ucbDiff=FALSE()
+
+  IF &supported
+  (
+    Data.LOAD.Elf "&bao_elf" ANC:0xAE404800++0x7FF /DIFF
+    &ucbDiff=FOUND()
+  )
+
+  IF (&ucbDiff)
+  (
+    ; activate UCB_RTC_BMHD0 modification
+    DO ~~/demo/tricore/flash/tc4x-ucb.cmm UCB=UCB_RTC_BMHD0 ACTIVATE
+
+    ; load data of UCB_RTC_BMHD0
+    Data.LOAD.Elf "&bao_elf" ANC:0xAE404800++0x7FF
+
+    ; Perform a formal verification of the UCB_RTC_BMHD0 content.
+    DO ~~/demo/tricore/flash/tc4x-ucb.cmm UCB=UCB_RTC_BMHD0 PROGRAM
+    ENTRY &result
+
+    IF ("&result"!="UCBOK")
+      ENDDO
+
+    Data.LOAD.Elf "&bao_elf" ANC:0xAE404800++0x7FF /DIFF
+    IF FOUND()
+    (
+      &diffAddress=TRACK.ADDRESS()
+      PRINT %ERROR "File &bao_elf has not been fully flashed, difference found at address &diffAddress (BMHD0_COPY)"
+      ENDDO
+    )
+  )
+
+  ; ==== Step 3: Verify programming ====
+
+  Data.LOAD.Elf "&bao_elf" /DIFF
+  IF FOUND()
+  (
+    &diffAddress=TRACK.ADDRESS()
+    PRINT %ERROR "File &bao_elf has not been fully flashed, difference found at address &diffAddress (check flash declaration)"
+    ENDDO
+  )
+)
+
+; --------------------------------------------------------------------------------
+; configure USR access to read 64-bit STM registers
+Data.USRACCESS 0xC0000000 0xD0000000 1024. ~~/demo/tricore/etc/usraccess/usraccess.gnu.bin
+
+; --------------------------------------------------------------------------------
+; Load debug symbols (bao + guests)
+
+Data.LOAD.Elf "&bao_elf" /NoCode /NoClear
+
+IF ("&elf1"!="")
+  Data.LOAD.Elf "&elf1" /NoCode /NoClear
+
+IF ("&elf2"!="")
+  Data.LOAD.Elf "&elf2" /NoCode /NoClear
+
+IF ("&elf3"!="")
+  Data.LOAD.Elf "&elf3" /NoCode /NoClear
+
+; --------------------------------------------------------------------------------
+; start program execution
+Go
+
+; Give Bao time to release secondary cores via BOOTCON_BHALT_START,
+; then attach to them so they appear in the debugger.
+; Remove or reduce the WAIT if Bao boots faster on your board.
+WAIT 2.s
+CORE.ASSIGN 1. 2. 3. 4. 5. 6.
+
+; Exit TRACE32 so t32mtc returns to the caller. The target keeps running
+; from flash independently once the debugger disconnects.
+QUIT
+
+SUBROUTINE CheckPreRequisites
+(
+  PRIVATE &result
+
+  IF SYStem.Mode()<5.
+  (
+    PRINT %ERROR "The communication with the CPU is not established"
+    ENDDO
+  )
+  ; Check CSRM boot mode
+  DO &ToolsDir/check_demo_config.cmm CSRMCFG_is_Default
+  ENTRY &result
+  IF !&result
+    ENDDO
+
+  ; Check Boot Mode Lock
+  DO &ToolsDir/check_demo_config.cmm BML_is_Default
+  ENTRY &result
+  IF !&result
+    ENDDO
+)

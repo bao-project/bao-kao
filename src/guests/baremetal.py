@@ -52,7 +52,7 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
         self.benchmark = benchmark
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
-        self.git_rev = "80dd17bd45fef1024f59f08b7e7bc69c9336a203"
+        self.git_rev = "2b14d908026f18254333230d457fb8f04d4a6ff4"
 
         self.use_local_repo = bool(local_repo_path)
         self.local_repo_path = local_repo_path
