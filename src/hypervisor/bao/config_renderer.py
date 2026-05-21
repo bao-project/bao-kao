@@ -273,17 +273,21 @@ def _normalize_arch(arch_cfg: Any, platform_name: str) -> dict[str, Any] | None:
     for arch_key, arch_value in _flatten_c_designators(
         {key: value for key, value in arch_cfg.items() if key != "gic"}
     ):
+        normalized_key = "gpsr_groups" if arch_key == "gspr_groups" else arch_key
         arch_literal = _to_c_initializer_literal(arch_value)
         if arch_literal is None:
             continue
 
+        if normalized_key == "gpsr_groups" and isinstance(arch_value, list):
+            arch_literal = f"(unsigned long int[]){arch_literal}"
+
         if (
             platform_name == "qemu-aarch64-virt"
-            and arch_key in {"gic.gicd_addr", "gic.gicr_addr"}
+            and normalized_key in {"gic.gicd_addr", "gic.gicr_addr"}
         ):
             arch_literal = f"(paddr_t) {arch_literal}"
 
-        generic_entries.append((arch_key, arch_literal))
+        generic_entries.append((normalized_key, arch_literal))
 
     gic_entries = []
     gic_cfg = arch_cfg.get("gic")

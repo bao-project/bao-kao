@@ -1,91 +1,84 @@
 """
 Copyright (c) Bao Project and Contributors. All rights reserved
 SPDX-License-Identifier: Apache-2.0
-Platform support for the TC4DX target.
+Platform support for the TC4 target.
 """
 
-# pylint: disable=duplicate-code
-import os
+import importlib
+import shutil
 import subprocess
+import os
 import sys
 
-CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../firmware")))
 
-for _p in (
-    os.path.abspath(os.path.join(CUR_DIR, "../toolchains")),
-    os.path.abspath(os.path.join(CUR_DIR, "../firmware")),
-):
-    if _p not in sys.path:
-        sys.path.append(_p)
+sys.path.append(os.path.abspath(os.path.join(cur_dir, "../toolchains")))
+tricore_elf = getattr(importlib.import_module("tricore_elf"), "tricore_elf")
+from generic_platform import generic_platform  # pylint: disable=wrong-import-position
 
-# pylint: disable=duplicate-code
-from tricore_elf import tricore_elf  # pylint: disable=wrong-import-position
+TIMER_FREQ = 50000000   # Hz — AURIX TC4x STM
+CPU_FREQ   = 100000000   # Hz — AURIX TC4x TriCore
 
-
-class tc4dx:  # pylint: disable=invalid-name
-    """Platform definition for the TC4DX target."""
-
+class tc4dx(generic_platform):  # pylint: disable=invalid-name,too-many-instance-attributes
+    """TC4DX platform support class."""
     def __init__(self, wrkdir):
-        """
-        Initialize platform paths and toolchain configuration.
-
-        Args:
-            wrkdir (str): Working directory used by the framework.
-        """
+        super().__init__(wrkdir)
         self.firmware_dir = f"{wrkdir}/platforms/firmware"
         self.firmware = {}
         self.toolchain = f"{wrkdir}/toolchains/tricore_elf"
         self.toolchain_prefix = "tricore-elf-"
         self.architecture = "tc4"
+        self.cpu_freq = CPU_FREQ
+        self.timer_freq = TIMER_FREQ
+        self.is_emulated = False
 
-        os.makedirs(self.firmware_dir, exist_ok=True)
+        if not os.path.exists(self.firmware_dir):
+            os.makedirs(self.firmware_dir)
 
-    @staticmethod
-    def setup_platform():
-        """Perform any platform-specific setup steps."""
-        return None
+    def setup_platform(self): # pylint: disable=no-self-use
+        """Perform any necessary setup for the platform."""
+        return
 
     def build_toolchain(self):
-        """Install the TriCore toolchain for the current host."""
-        host_architecture = subprocess.check_output(
-            ["uname", "-m"]
-        ).decode().strip()
+        """Build the toolchain for the platform."""
+        host_architecture = subprocess.check_output(["uname", "-m"]).decode().strip()
         toolchain_instance = tricore_elf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
 
-    def build_firmware(self, _run_bin=None, _interrupt_flags=None):
-        """
-        Build the platform firmware artifacts.
+    def build_firmware(self, run_bin=None, interrupt_flags=None): # pylint: disable=no-self-use disable=unused-argument
+        """Build the firmware for the platform."""
+        return
 
-        Args:
-            _run_bin (str | None): Unused runtime binary path.
-            _interrupt_flags (object | None): Unused interrupt-related build options.
-        """
-        self.build_toolchain()
+    def get_serial_ports(self): # pylint: disable=no-self-use
+        """Get the list of serial ports available for the platform."""
+        return ["/dev/ttyUSB0"]
 
-    @staticmethod
-    def launch_test(
-        _bao_img,
-        _interrupt_flags,
-        _guest_bins=None,
-        _guest_os="baremetal",
-        _hypervisor=None,
-    ):
-        """
-        Launch a test for the TC4DX platform.
+    def launch_test(self, run_bin, interrupt_flags,
+                    guest_bins=None, guest_os="baremetal",
+                    hypervisor=None
+        ):  # pylint: disable=too-many-arguments,unused-argument
+        """Launch the test on the platform."""
+        launch_script_path = os.path.join(cur_dir, "tc4dx/t32.cmm")
 
-        Args:
-            _bao_img (str): Path to the Bao image.
-            _interrupt_flags (object): Interrupt-related runtime options.
-            _guest_bins (str | None): Unused guest binaries path.
-            _guest_os (str): Unused guest OS type.
-            _hypervisor (str | None): Unused hypervisor selection.
+        cmd = ["t32mtc", "-s", launch_script_path]
 
-        Returns:
-            tuple: Process handle, stderr path, stderr file handle, serial ports.
-        """
-        proc = None
-        stderr_path = None
-        errf = None
-        serial_ports = []
-        return proc, stderr_path, errf, serial_ports
+        if hypervisor is not None and hypervisor != "standalone":
+            run_elf = run_bin.replace(".bin", ".elf")
+            run_img = os.path.join(
+                self.firmware_dir, "run.elf"
+            )
+            shutil.copy(
+                run_elf,
+                run_img
+            )
+            cmd.append(run_img)
+
+        if guest_bins:
+            for guest_bin in os.listdir(guest_bins):
+                if guest_bin.endswith(".elf"):
+                    cmd.append(
+                        os.path.join(guest_bins, guest_bin)
+                    )
+
+        return super().run_command(cmd, log_tab_level=2)
