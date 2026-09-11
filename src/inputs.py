@@ -255,7 +255,7 @@ class CLI(InputProvider):
             metavar="DIR",
             help=(
                 "Directory holding the project's tests: src/ with the test sources "
-                "and configs/ with the environments (default: ../tests relative to kao)"
+                "and envs/ with the environments (default: ../tests relative to kao)"
             ),
             default=None,
         )
@@ -273,9 +273,9 @@ class CLI(InputProvider):
         )
 
         parser.add_argument(
-            "--configs",
+            "--envs",
             metavar="DIR",
-            help="Directory holding the environment configs (default: <tests-root>/configs)",
+            help="Directory holding the environments (default: <tests-root>/envs)",
             default=None,
         )
 

@@ -130,7 +130,7 @@ class TestFramework:
         self.cli_args = None
         self.tests_root = TESTS_DIR
         self.tests_sources = None
-        self.configs_dir = os.path.join(TESTS_DIR, "configs")
+        self.envs_dir = os.path.join(TESTS_DIR, "envs")
 
     def build_guests(self, platform, irq_flags=None):
 
@@ -537,7 +537,7 @@ class TestFramework:
             selected = [test for test in selected if not unwanted & set(test["tags"])]
 
         platform_name = _get_platform_name(platform)
-        available = available_envs(self.configs_dir, platform_name)
+        available = available_envs(self.envs_dir, platform_name)
         if args.env is not None:
             unknown = [env for env in args.env if env not in available]
             if unknown:
@@ -591,7 +591,7 @@ class TestFramework:
         if args.tests_root:
             self.tests_root = os.path.abspath(args.tests_root)
         self.tests_sources = args.tests_src
-        self.configs_dir = os.path.abspath(args.configs or os.path.join(self.tests_root, "configs"))
+        self.envs_dir = os.path.abspath(args.envs or os.path.join(self.tests_root, "envs"))
 
         self.runtime_config = {
             "log_level": int(args.log_level),
@@ -816,8 +816,8 @@ def launch_group(kao_runner, platform, wrkdir, setup, grouped_tests):
     else:
         benchmark_name = None
         setup_name = str(setup).lower()
-        setup_cfg_path = os.path.join(kao_runner.configs_dir, setup_name)
-        generated_cfg_dir = os.path.join(wrkdir, "configs", "tests", setup_name)
+        setup_cfg_path = os.path.join(kao_runner.envs_dir, setup_name)
+        generated_cfg_dir = os.path.join(wrkdir, "envs", setup_name)
         print_log(
             "INFO",
             f"Preparing Test IDs {test_ids} in environment '{setup_name}'...",

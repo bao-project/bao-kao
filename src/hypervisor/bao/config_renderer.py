@@ -38,14 +38,14 @@ def find_yaml_config(config_path: str, platform_name: str) -> str | None:
     return None
 
 
-def available_envs(configs_dir: str, platform_name: str) -> list[str]:
-    """Environments under configs_dir that have a config for platform_name."""
-    if not os.path.isdir(configs_dir):
+def available_envs(envs_dir: str, platform_name: str) -> list[str]:
+    """Environments under envs_dir that have a config for platform_name."""
+    if not os.path.isdir(envs_dir):
         return []
 
     envs = []
-    for entry in sorted(os.listdir(configs_dir)):
-        env_dir = os.path.join(configs_dir, entry)
+    for entry in sorted(os.listdir(envs_dir)):
+        env_dir = os.path.join(envs_dir, entry)
         if os.path.isdir(env_dir) and find_yaml_config(env_dir, platform_name):
             envs.append(entry.lower())
     return envs
