@@ -114,7 +114,7 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
         self.list_events["event_thread_finished"].set()
 
     def echo_log_tf(self, serial_results):
-        """Print only the Bao Kao Framework section of the serial output."""
+        """Print the test output between START and END, without the protocol lines."""
         is_kao_section = False
         for line in serial_results:
             if self.test_tags["start"] in line:
@@ -129,12 +129,14 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
                     + "\n"
                 )
                 is_kao_section = True
+                continue
 
-            elif self.test_tags["end"] in line:
+            if self.test_tags["end"] in line:
                 is_kao_section = False
-                print(line, end="")
+                continue
 
-            if is_kao_section:
+            # Commands and the machine-readable summary are for kao, not the reader.
+            if is_kao_section and self.test_tags["c"] not in line:
                 print(line, end="")
 
         self.list_events["event_thread_finished"].set()

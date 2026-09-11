@@ -50,12 +50,12 @@ class CLI(InputProvider):
             "-l",
             "--log-level",
             help=(
-                "Amount of information produced by the framework:\n"
-                "0 - only logs the final report\n"
-                "1 - logs failed tests and the final report\n"
-                "2 - logs all test results and the final report"
+                "Amount of information produced by the tests:\n"
+                "0 - the final report only\n"
+                "1 - one line per test, where failures happened, and the report (default)\n"
+                "2 - also the 'Running' lines and the messages of passing tests"
             ),
-            default=0,
+            default=1,
         )
 
         parser.add_argument(

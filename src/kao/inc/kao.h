@@ -116,19 +116,23 @@ extern const unsigned int kao_tests_num;
             kao_tests_total - kao_tests_failed, kao_tests_failed);       \
     } while (0)
 
+/*
+ * Log levels: 0 prints the final report only, 1 adds one line per test and
+ * where a failure happened, 2 adds the "Running" lines and the messages of
+ * KAO_PASS. The [KAO-C] lines are the protocol with kao and are not part of
+ * what a person is meant to read.
+ */
 #define LOG_TESTS()                                                                \
     do {                                                                           \
-        if (KAO_LOG_LEVEL > 1) {                                                 \
-            printf("\n");                                                          \
-            INFO_TAG();                                                            \
-            printf("Final Report\n");                                              \
-            if (kao_tests_failed)                                                \
-                LOG_NOT_SUCCESS();                                                 \
-            else                                                                   \
-                LOG_SUCCESS();                                                     \
-        }                                                                          \
-        printf("[KAO-C] TOTAL#%u SUCCESS#%u FAIL#%u\n\n", kao_tests_total,     \
-            kao_tests_total - kao_tests_failed, kao_tests_failed);           \
+        printf("\n");                                                              \
+        INFO_TAG();                                                                \
+        printf("Final Report\n");                                                  \
+        if (kao_tests_failed)                                                      \
+            LOG_NOT_SUCCESS();                                                     \
+        else                                                                       \
+            LOG_SUCCESS();                                                         \
+        printf("[KAO-C] TOTAL#%u SUCCESS#%u FAIL#%u\n\n", kao_tests_total,         \
+            kao_tests_total - kao_tests_failed, kao_tests_failed);                 \
     } while (0)
 
 #include "kao_assert.h"

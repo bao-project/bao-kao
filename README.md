@@ -140,7 +140,10 @@ A selected test runs once in every environment it declares that the platform
 provides, unless `--env` narrows the list. Tests whose environments are all
 unavailable for the platform are skipped with a warning.
 
-Other useful options: `-l` (test log level), `-e` (serial echo filtering),
+Other useful options: `-l` (what the tests print: 0 the final report, 1 one
+line per test with failure details, 2 everything), `-e` (serial echo
+filtering: `tf` shows the test output, `full` the whole serial log including
+the `[KAO-C]` protocol lines),
 `--tests-root`, `--tests-src`, `--envs`, `--plat-virt-args`,
 `--serial-port`, `--no-firmware-build`, `--no-toolchain-build`, `--wrkdir`.
 Run with `-h` for the full list.

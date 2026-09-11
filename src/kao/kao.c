@@ -27,13 +27,13 @@ static void kao_run(const struct kao_test* test)
     if (cpu_is_master()) {
         if (kao_failures) {
             kao_tests_failed++;
-            if (KAO_LOG_LEVEL > 1) {
+            if (KAO_LOG_LEVEL > 0) {
                 FAIL_TAG();
-                printf("[%s] %s failed!\n", test->id, test->name);
+                printf("[%s] %s\n", test->id, test->name);
             }
-        } else if (KAO_LOG_LEVEL > 1) {
+        } else if (KAO_LOG_LEVEL > 0) {
             SUCC_TAG();
-            printf("[%s] %s passed!\n", test->id, test->name);
+            printf("[%s] %s\n", test->id, test->name);
         }
     }
 }
