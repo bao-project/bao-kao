@@ -55,11 +55,14 @@ extern const unsigned int testf_tests_num;
 #ifdef TESTF_DISCOVERY
 #define BAO_TEST(id, fn, tags, envs, desc) \
     @BAO_TEST@ id @ fn @ tags @ envs @ desc @ __FILE__ @ __LINE__ @
+/* Optional, once per file: tags every test registered in this file carries. */
+#define FILE_TAGS(...) @BAO_FILE_TAGS@ #__VA_ARGS__ @ __FILE__ @
 #else
 #define BAO_TEST(id, fn, tags, envs, desc)                                  \
     static void fn(void);                                                   \
     static const struct testf_test __attribute__((unused)) testf_test_##id = \
         { #id, #fn, fn, tags, envs, desc }
+#define FILE_TAGS(...) extern const int testf_file_tags_declared
 #endif
 
 #define RED()         printf("\033[1;31m")

@@ -22,6 +22,7 @@ _MARKER_RE = re.compile(
     r"@BAO_TEST@\s+(\S+)\s+@\s+(\S+)\s+@\s+(" + _STRING + r")@\s+(" + _STRING
     + r")@\s+(" + _STRING + r")@\s+(" + _STRING + r")@\s+(\d+)\s+@"
 )
+_FILE_TAGS_RE = re.compile(r"@BAO_FILE_TAGS@\s+(" + _STRING + r")@\s+(" + _STRING + r")@")
 _STRING_LITERAL_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
 _ID_TOKEN_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -119,10 +120,30 @@ def _parse_marker(match, src_root):
     }
 
 
+def _file_tags(output, src_root):
+    """Tags declared with FILE_TAGS, keyed by path relative to src_root."""
+    file_tags = {}
+    for match in _FILE_TAGS_RE.finditer(output):
+        tags, file_literal = match.groups()
+        rel_path = os.path.relpath(os.path.abspath(unquote(file_literal)), src_root)
+        try:
+            tokens = _token_list(tags, "tag")
+        except ValueError as exc:
+            raise ValueError(f"{rel_path}: {exc}") from exc
+        merged = file_tags.setdefault(rel_path, [])
+        merged.extend(t for t in tokens if t not in merged)
+    return file_tags
+
+
 def parse_discovery(output, src_root):
     """Turn the marker lines printed by `make testf-discover` into test records."""
     src_root = os.path.abspath(src_root)
     tests = [_parse_marker(match, src_root) for match in _MARKER_RE.finditer(output)]
+
+    for rel_path, tags in _file_tags(output, src_root).items():
+        for test in tests:
+            if test["file"] == rel_path:
+                test["tags"] = tags + [t for t in test["tags"] if t not in tags]
 
     by_id = {}
     for test in tests:
