@@ -23,9 +23,8 @@ def _get_platform_name(platform) -> str:
     return platform.__class__.__name__.replace("_", "-")
 
 
-def _resolve_yaml_config_path(config_path: str, platform) -> str:
-    """Resolve the YAML config path for the given platform."""
-    platform_name = _get_platform_name(platform)
+def find_yaml_config(config_path: str, platform_name: str) -> str | None:
+    """Return the YAML config for platform_name under config_path, if any."""
     candidates = [
         os.path.join(config_path, f"{platform_name}.yaml"),
         os.path.join(config_path, f"{platform_name}.yml"),
@@ -36,6 +35,28 @@ def _resolve_yaml_config_path(config_path: str, platform) -> str:
     for candidate in candidates:
         if os.path.isfile(candidate):
             return candidate
+    return None
+
+
+def available_envs(configs_dir: str, platform_name: str) -> list[str]:
+    """Environments under configs_dir that have a config for platform_name."""
+    if not os.path.isdir(configs_dir):
+        return []
+
+    envs = []
+    for entry in sorted(os.listdir(configs_dir)):
+        env_dir = os.path.join(configs_dir, entry)
+        if os.path.isdir(env_dir) and find_yaml_config(env_dir, platform_name):
+            envs.append(entry.lower())
+    return envs
+
+
+def _resolve_yaml_config_path(config_path: str, platform) -> str:
+    """Resolve the YAML config path for the given platform."""
+    platform_name = _get_platform_name(platform)
+    yaml_path = find_yaml_config(config_path, platform_name)
+    if yaml_path is not None:
+        return yaml_path
 
     raise FileNotFoundError(
         f"Could not find YAML config for platform '{platform_name}' in '{config_path}'."

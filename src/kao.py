@@ -59,7 +59,8 @@ bao = getattr(importlib.import_module("hypervisor.bao.bao"), "bao")
 config_renderer_module = importlib.import_module("hypervisor.bao.config_renderer")
 read_config = getattr(config_renderer_module, "read_config")
 write_config = getattr(config_renderer_module, "write_config")
-find_bao_tests = getattr(importlib.import_module("utils.codegen"), "find_bao_tests")
+available_envs = getattr(config_renderer_module, "available_envs")
+list_sources = getattr(importlib.import_module("utils.codegen"), "list_sources")
 standalone = getattr(importlib.import_module("hypervisor.generic"), "standalone")
 baremetal_test = getattr(importlib.import_module("baremetal"), "baremetal_test")
 
@@ -126,7 +127,10 @@ class TestFramework:
         self.test_config = {}
         self.hypervisor = "bao"
         self.hypervisor_srcs = ""
-        self.guests = []
+        self.cli_args = None
+        self.tests_root = TESTS_DIR
+        self.tests_sources = None
+        self.configs_dir = os.path.join(TESTS_DIR, "configs")
 
     def build_guests(self, platform, irq_flags=None):
 
@@ -211,7 +215,7 @@ class TestFramework:
             if not guest_type:
                 raise ValueError(
                     f"Missing guest name in VM entry #{vm_idx} "
-                    f"for setup '{self.test_config.get('setup', '')}'."
+                    f"for environment '{self.test_config.get('env', '')}'."
                 )
             print_log("INFO", f"Building guest {guest_type}:", tab_level=1)
 
@@ -235,17 +239,12 @@ class TestFramework:
             if guest_class is None:
                 raise ValueError(f"Unsupported guest type '{guest_type}'")
 
-            list_tests = self.test_config["tests"]
-            list_suites = self.test_config["suites"]
-            benchmark = self.test_config["benchmark"]
-
             guest_instance = guest_class(
                 self.wrkdir,
-                list_tests,
-                list_suites,
-                benchmark,
+                self.test_config["tests"],
+                self.test_config["benchmark"],
                 kao_dir=KAO_DIR,
-                tests_srcs=TESTS_DIR,
+                tests_srcs=os.path.join(self.tests_root, "src"),
                 bin_name=guest_name,
                 build_flags=building_flags,
             )
@@ -301,32 +300,26 @@ class TestFramework:
         print_log("SUCCESS", "Successfully built final image!", tab_level=1)
         return out_bin_path, bin_name, elf_name
 
-    def clean_build_artifacts(self):
-        """Placeholder for future targeted artifact cleanup."""
-        self.cleanup()
-
-    def populate_tests(self):
-        src_dir = os.path.join(TESTS_DIR, "src")
-        self.tests = []
-
-        c_files = sorted(f for f in os.listdir(src_dir) if f.endswith(".c"))
-        for suite_nr, fname in enumerate(c_files, start=1):
-            with open(os.path.join(src_dir, fname), encoding="utf-8") as source_file:
-                content = source_file.read()
-
-            for test_nr, args in enumerate(find_bao_tests(content)):
-                self.tests.append({
-                    "id": suite_nr * 100 + test_nr,
-                    "suite_nr": suite_nr,
-                    "test_nr": test_nr,
-                    "suite": args[0] if len(args) > 0 else "",
-                    "name": args[1] if len(args) > 1 else "",
-                    "setup": args[2] if len(args) > 2 else "",
-                    "guests": args[2].split("+") if len(args) > 2 else [],
-                    "description": args[3] if len(args) > 3 else "",
-                    "file": fname,
-                })
-
+    def discover_tests(self, platform):
+        """Discover the tests in the candidate sources through the guest build."""
+        files = list_sources(os.path.join(self.tests_root, "src"), self.tests_sources)
+        guest = baremetal_test(
+            self.wrkdir,
+            None,
+            False,
+            kao_dir=KAO_DIR,
+            tests_srcs=os.path.join(self.tests_root, "src"),
+            bin_name="baremetal",
+            build_flags={},
+        )
+        guest.prepare(
+            platform=_get_platform_name(platform),
+            arch=platform.architecture,
+            toolchain=platform.toolchain,
+            irq_flags=base_interrupt_flags(self, platform),
+            log_level=self.runtime_config.get("log_level", 0),
+        )
+        self.tests = guest.discover(files)
         return self.tests
 
     def populate_plats(self):
@@ -387,7 +380,7 @@ class TestFramework:
             return False
 
         def extract_benchmark_description(source_dir):
-            pattern = re.compile(r"BAO_BENCHMARK_DESC\s*:\s*(.+)")
+            pattern = re.compile(r"KAO_BENCHMARK_DESC\s*:\s*(.+)")
             for root, _, files in os.walk(source_dir):
                 for file_name in sorted(files):
                     if not file_name.endswith(".c"):
@@ -475,16 +468,6 @@ class TestFramework:
                 }
             )
         return self.benchmarks
-    def populate_guests(self, workloads=None):
-        self.guests = []
-        workloads = workloads if workloads is not None else self.tests
-        for workload in workloads:
-            for guest in workload.get("guests", []):
-                guest_lower = str(guest).lower()
-                if guest_lower not in self.guests:
-                    self.guests.append(guest_lower)
-
-        return self.guests
 
     @staticmethod
     def validate_workload_ids(workload_ids, workloads, workload_type):
@@ -496,79 +479,119 @@ class TestFramework:
                     f"Valid IDs are: {sorted(valid_ids)}"
                 )
 
-    def validate_tests(self, test_ids):
-        self.validate_workload_ids(test_ids, self.tests, "test")
+    @staticmethod
+    def parse_id_list(id_list, label, numeric):
+        parsed_ids = []
+        invalid_ids = []
+
+        for raw_id in id_list:
+            id_value = str(raw_id).strip()
+            try:
+                parsed_ids.append(int(id_value) if numeric else id_value)
+            except ValueError:
+                invalid_ids.append(id_value if id_value else "<empty>")
+
+        if invalid_ids:
+            raise ValueError(
+                f"{label} IDs must be integers. Invalid values: "
+                f"{', '.join(invalid_ids)}."
+            )
+
+        return parsed_ids
+
+    def _select_ids(self, workloads, include_ids, exclude_ids):
+        numeric = self.run_type == "benchmark"
+        if include_ids is None or include_ids == "all":
+            selected = [workload["id"] for workload in workloads]
+        else:
+            selected = self.parse_id_list(include_ids, self.run_type.capitalize(), numeric)
+
+        if exclude_ids:
+            label = f"Excluded {self.run_type}"
+            excluded = set(self.parse_id_list(exclude_ids, label, numeric))
+            selected = [wid for wid in selected if wid not in excluded]
+
+        print_log("INFO", f"Validating {self.run_type} IDs...", tab_level=0)
+        self.validate_workload_ids(selected, workloads, self.run_type)
+        return [workload for workload in workloads if workload["id"] in selected]
+
+    def select_benchmarks(self):
+        args = self.cli_args
+        self.tests_to_run = self._select_ids(
+            self.benchmarks, args.benchmark, args.benchmark_exclude
+        )
+        ids = ", ".join(str(bench["id"]) for bench in self.tests_to_run)
+        print_log("SUCCESS", f"Benchmarks to run: {ids}.", tab_level=0)
+        return self.tests_to_run
+
+    def select_tests(self, platform):
+        """Apply id, tag and environment filters; one run unit per (test, env)."""
+        args = self.cli_args
+        selected = self._select_ids(self.tests, args.test, args.test_exclude)
+
+        if args.tags is not None:
+            wanted = set(args.tags)
+            selected = [test for test in selected if wanted <= set(test["tags"])]
+        if args.exclude_tags is not None:
+            unwanted = set(args.exclude_tags)
+            selected = [test for test in selected if not unwanted & set(test["tags"])]
+
+        platform_name = _get_platform_name(platform)
+        available = available_envs(self.configs_dir, platform_name)
+        if args.env is not None:
+            unknown = [env for env in args.env if env not in available]
+            if unknown:
+                raise ValueError(
+                    f"Environment(s) {', '.join(unknown)} not available for platform "
+                    f"'{platform_name}'. Available: {', '.join(available) or 'none'}."
+                )
+            available = [env for env in available if env in args.env]
+
+        self.tests_to_run = []
+        skipped = []
+        for test in selected:
+            envs = [env for env in test["envs"] if env in available]
+            if not envs:
+                skipped.append(test)
+                continue
+            for env in envs:
+                self.tests_to_run.append({**test, "env": env})
+        self.tests_to_run.sort(key=lambda test: test["env"])
+
+        for test in skipped:
+            print_log(
+                "WARNING",
+                f"Skipping test {test['id']} ({test['name']}): none of its "
+                f"environments ({', '.join(test['envs'])}) is available for "
+                f"'{platform_name}'.",
+                tab_level=0,
+            )
+
+        if not self.tests_to_run:
+            raise ValueError(
+                f"No tests selected for platform '{platform_name}'. "
+                f"Available environments: {', '.join(available) or 'none'}."
+            )
+
+        for env in dict.fromkeys(test["env"] for test in self.tests_to_run):
+            ids = ", ".join(t["id"] for t in self.tests_to_run if t["env"] == env)
+            print_log("SUCCESS", f"Tests to run in '{env}': {ids}.", tab_level=0)
+
+        return self.tests_to_run
 
     def parse_args(self):
         args = CLI().kao_config(platforms=[plat[0] for plat in self.plats])
+        self.cli_args = args
 
         benchmark_mode_requested = (
             args.benchmark is not None or bool(args.benchmark_exclude)
         )
-        if benchmark_mode_requested:
-            self.run_type = "benchmark"
-            workloads = self.benchmarks
-            include_ids = args.benchmark
-            exclude_ids = args.benchmark_exclude
-        else:
-            self.run_type = "test"
-            workloads = self.tests
-            include_ids = args.test
-            exclude_ids = args.test_exclude
+        self.run_type = "benchmark" if benchmark_mode_requested else "test"
 
-        all_ids = [workload["id"] for workload in workloads]
-        workloads_to_run = []
-
-        def parse_id_list(id_list, label):
-            parsed_ids = []
-            invalid_ids = []
-
-            for raw_id in id_list:
-                id_value = str(raw_id).strip()
-                try:
-                    parsed_ids.append(int(id_value))
-                except ValueError:
-                    invalid_ids.append(id_value if id_value else "<empty>")
-
-            if invalid_ids:
-                raise ValueError(
-                    f"{label} IDs must be integers. Invalid values: "
-                    f"{', '.join(invalid_ids)}."
-                )
-
-            return parsed_ids
-
-        if include_ids is None or include_ids == "all":
-            workloads_to_run = all_ids
-        else:
-            workloads_to_run = parse_id_list(
-                include_ids,
-                self.run_type.capitalize(),
-            )
-
-        if exclude_ids:
-            excluded = set(
-                parse_id_list(exclude_ids, f"Excluded {self.run_type}")
-            )
-            workloads_to_run = [
-                workload_id
-                for workload_id in workloads_to_run
-                if workload_id not in excluded
-            ]
-
-        workload_label = self.run_type.capitalize()
-        print_log("INFO", f"Validating {self.run_type} IDs...", tab_level=0)
-        self.validate_workload_ids(workloads_to_run, workloads, self.run_type)
-        print_log(
-            "SUCCESS",
-            f"{workload_label}s to run: {', '.join(map(str, workloads_to_run))}.",
-            tab_level=0,
-        )
-
-        self.tests_to_run = [
-            workload for workload in workloads
-            if workload["id"] in workloads_to_run
-        ]
+        if args.tests_root:
+            self.tests_root = os.path.abspath(args.tests_root)
+        self.tests_sources = args.tests_src
+        self.configs_dir = os.path.abspath(args.configs or os.path.join(self.tests_root, "configs"))
 
         self.runtime_config = {
             "log_level": int(args.log_level),
@@ -581,9 +604,6 @@ class TestFramework:
             "hypervisor": args.hypervisor,
             "hypervisor_srcs": args.hyp_srcs,
         }
-
-        if args.generate_id_readme is not None:
-            self.generate_id_readme()
 
     def launch_test(
         self,
@@ -697,9 +717,9 @@ class TestFramework:
         table_tests = pretty_table_cls()
         table_tests.field_names = [
             "ID",
-            "Suite",
             "Name",
-            "Setup",
+            "Tags",
+            "Envs",
             "Description",
             "File",
         ]
@@ -707,9 +727,9 @@ class TestFramework:
             table_tests.add_row(
                 [
                     test["id"],
-                    test["suite"],
                     test["name"],
-                    test["setup"],
+                    ", ".join(test["tags"]),
+                    ", ".join(test["envs"]),
                     test["description"],
                     test["file"],
                 ]
@@ -734,15 +754,8 @@ class TestFramework:
 
 test_framework = TestFramework  # pylint: disable=invalid-name
 
-def launch_tests(kao_runner, tests, platform, wrkdir):
-    group_key = "benchmark" if kao_runner.run_type == "benchmark" else "setup"
-    setup_groups = {}
-    for test in tests:
-        setup = test.get(group_key) or test.get("setup")
-        if setup not in setup_groups:
-            setup_groups[setup] = []
-        setup_groups[setup].append(test)
-
+def base_interrupt_flags(kao_runner, platform):
+    """Interrupt controller flags for the guest build: platform defaults plus CLI."""
     raw_irq_flags = getattr(platform, "irq_flags", {})
     if (
         isinstance(raw_irq_flags, tuple)
@@ -750,175 +763,127 @@ def launch_tests(kao_runner, tests, platform, wrkdir):
         and isinstance(raw_irq_flags[0], dict)
     ):
         raw_irq_flags = raw_irq_flags[0]
-    base_interrupt_flags = (
-        dict(raw_irq_flags) if isinstance(raw_irq_flags, dict) else {}
+    interrupt_flags = dict(raw_irq_flags) if isinstance(raw_irq_flags, dict) else {}
+
+    platform_args = kao_runner.runtime_config.get("platform_args", "")
+    if "GIC_version" not in interrupt_flags and isinstance(platform_args, str):
+        for arg in platform_args.split(","):
+            if arg.strip().upper().startswith("GICV"):
+                interrupt_flags["GIC_version"] = arg.strip().upper()
+                break
+    return interrupt_flags
+
+def launch_tests(kao_runner, tests, platform, wrkdir):
+    group_key = "benchmark" if kao_runner.run_type == "benchmark" else "env"
+    setup_groups = {}
+    for test in tests:
+        setup = test[group_key]
+        if setup not in setup_groups:
+            setup_groups[setup] = []
+        setup_groups[setup].append(test)
+
+    failed_groups = []
+    for setup, grouped_tests in setup_groups.items():
+        try:
+            launch_group(kao_runner, platform, wrkdir, setup, grouped_tests)
+        except (RuntimeError, ValueError, OSError, TimeoutError) as exc:
+            print_log("ERROR", f"Run for '{setup}' failed: {exc}", tab_level=0)
+            failed_groups.append(setup)
+
+    if failed_groups:
+        raise RuntimeError(
+            f"Runs failed for: {', '.join(failed_groups)} "
+            f"({len(setup_groups) - len(failed_groups)} of {len(setup_groups)} completed)."
+        )
+
+def launch_group(kao_runner, platform, wrkdir, setup, grouped_tests):
+    """Build, boot and run one environment (or benchmark) group."""
+    interrupt_flags = base_interrupt_flags(kao_runner, platform)
+    test_ids = [test["id"] for test in grouped_tests]
+    is_benchmark = kao_runner.run_type == "benchmark"
+    platform_name = _get_platform_name(platform)
+
+    if is_benchmark:
+        benchmark_name = str(grouped_tests[0].get("benchmark", setup)).strip()
+        setup_name = str(grouped_tests[0].get("setup", benchmark_name)).lower()
+        setup_cfg_path = os.path.join(BENCHS_DIR, "configs", setup_name)
+        if not os.path.isdir(setup_cfg_path):
+            raise FileNotFoundError(
+                f"Could not find benchmark config directory '{setup_cfg_path}'."
+            )
+        generated_cfg_dir = os.path.join(wrkdir, "configs", "benchmarks", setup_name)
+        print_log("INFO", f"Preparing Benchmark IDs {test_ids}: {benchmark_name}.", tab_level=0)
+    else:
+        benchmark_name = None
+        setup_name = str(setup).lower()
+        setup_cfg_path = os.path.join(kao_runner.configs_dir, setup_name)
+        generated_cfg_dir = os.path.join(wrkdir, "configs", "tests", setup_name)
+        print_log(
+            "INFO",
+            f"Preparing Test IDs {test_ids} in environment '{setup_name}'...",
+            tab_level=0,
+        )
+
+    vm_configs = read_config(setup_cfg_path, platform)
+
+    # Platform-specific extras next to the YAML (BSP sources, config.mk) travel
+    # with the generated config so the hypervisor build finds them.
+    platform_cfg_dir = os.path.join(setup_cfg_path, platform_name)
+    if os.path.isdir(platform_cfg_dir):
+        shutil.copytree(
+            platform_cfg_dir,
+            os.path.join(generated_cfg_dir, platform_name),
+            dirs_exist_ok=True,
+        )
+
+    generated_cfg_file = write_config(setup_cfg_path, platform, output_dir=generated_cfg_dir)
+    bao_cfg_repo_abs = os.path.abspath(generated_cfg_dir)
+    interrupt_flags["bao_config_path"] = os.path.abspath(generated_cfg_file)
+
+    kao_runner.hypervisor = kao_runner.runtime_config.get("hypervisor", "bao")
+    kao_runner.hypervisor_srcs = kao_runner.runtime_config.get(
+        "hypervisor_srcs",
+        "",
+    )
+    kao_runner.test_config = {
+        "platform": platform_name,
+        "env": setup_name,
+        "echo": kao_runner.runtime_config.get("echo", "tf"),
+        "tests": grouped_tests,
+        "benchmark": benchmark_name if is_benchmark else False,
+        "vms": vm_configs,
+    }
+
+    workload_prefix = "B" if is_benchmark else "T"
+    print_log(
+        "INFO",
+        f"{workload_prefix}{test_ids}: Building guests ...",
+        tab_level=0,
+    )
+    kao_runner.build_guests(platform, interrupt_flags)
+
+    print_log(
+        "INFO",
+        f"Building run image [{kao_runner.hypervisor}]...",
+        tab_level=0,
+    )
+    run_bin, _bin_name, _elf_name = kao_runner.build_run_bin(
+        wrkdir,
+        bao_cfg_repo_abs,
+        platform,
     )
 
-    for setup, grouped_tests in setup_groups.items():
-        interrupt_flags = dict(base_interrupt_flags)
-        test_ids = [test["id"] for test in grouped_tests]
-        is_benchmark = kao_runner.run_type == "benchmark"
-        platform_name = _get_platform_name(platform)
+    if kao_runner.runtime_config.get("firmware_build", True):
+        platform.build_firmware(run_bin, interrupt_flags)
 
-        if is_benchmark:
-            benchmark_name = str(grouped_tests[0].get("benchmark", setup)).strip()
-            setup_name = str(grouped_tests[0].get("setup", benchmark_name)).lower()
-            setup_cfg_path = os.path.join(BENCHS_DIR, "configs", setup_name)
-            if not os.path.isdir(setup_cfg_path):
-                raise FileNotFoundError(
-                    f"Could not find benchmark config directory '{setup_cfg_path}'."
-                )
-
-            vm_configs = read_config(setup_cfg_path, platform)
-            generated_cfg_dir = os.path.join(
-                wrkdir,
-                "configs",
-                "benchmarks",
-                setup_name,
-            )
-
-            platform_cfg_dir = os.path.join(setup_cfg_path, platform_name)
-            if os.path.isdir(platform_cfg_dir):
-                generated_platform_cfg_dir = os.path.join(
-                    generated_cfg_dir,
-                    platform_name,
-                )
-                os.makedirs(generated_platform_cfg_dir, exist_ok=True)
-                for item in os.listdir(platform_cfg_dir):
-                    src_path = os.path.join(platform_cfg_dir, item)
-                    dst_path = os.path.join(generated_platform_cfg_dir, item)
-                    if os.path.isdir(src_path):
-                        shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(src_path, dst_path)
-
-            generated_cfg_file = write_config(
-                setup_cfg_path,
-                platform,
-                output_dir=generated_cfg_dir,
-            )
-            bao_cfg_repo_abs = os.path.abspath(generated_cfg_dir)
-            bao_cfg_file_abs = os.path.abspath(generated_cfg_file)
-            interrupt_flags["bao_config_path"] = bao_cfg_file_abs
-            print_log(
-                "INFO",
-                f"Preparing Benchmark IDs {test_ids}: {benchmark_name}.",
-                tab_level=0,
-            )
-        else:
-            setup_name = str(setup).lower()
-            setup_cfg_path = os.path.join(TESTS_DIR, "configs", setup_name)
-            vm_configs = read_config(setup_cfg_path, platform)
-            generated_cfg_dir = os.path.join(
-                wrkdir,
-                "configs",
-                "tests",
-                setup_name,
-            )
-
-            platform_cfg_dir = os.path.join(setup_cfg_path, platform_name)
-            if os.path.isdir(platform_cfg_dir):
-                generated_platform_cfg_dir = os.path.join(
-                    generated_cfg_dir,
-                    platform_name,
-                )
-                os.makedirs(generated_platform_cfg_dir, exist_ok=True)
-                for item in os.listdir(platform_cfg_dir):
-                    src_path = os.path.join(platform_cfg_dir, item)
-                    dst_path = os.path.join(generated_platform_cfg_dir, item)
-                    if os.path.isdir(src_path):
-                        shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(src_path, dst_path)
-
-            generated_cfg_file = write_config(
-                setup_cfg_path,
-                platform,
-                output_dir=generated_cfg_dir,
-            )
-            bao_cfg_repo_abs = os.path.abspath(generated_cfg_dir)
-            bao_cfg_file_abs = os.path.abspath(generated_cfg_file)
-            interrupt_flags["bao_config_path"] = bao_cfg_file_abs
-            print_log(
-                "INFO",
-                f"Preparing Test IDs {test_ids}: "
-                f"{grouped_tests[0]['suite']} - {grouped_tests[0]['name']} "
-                f"(and others with same setup)...",
-                tab_level=0,
-            )
-
-        kao_runner.hypervisor = kao_runner.runtime_config.get("hypervisor", "bao")
-        kao_runner.hypervisor_srcs = kao_runner.runtime_config.get(
-            "hypervisor_srcs",
-            "",
-        )
-        kao_runner.test_config = {
-            "platform": platform_name,
-            "setup": setup_name,
-            "echo": kao_runner.runtime_config.get("echo", "tf"),
-            "tests": " ".join(
-                dict.fromkeys(
-                    test["name"]
-                    for test in grouped_tests
-                    if test.get("name")
-                )
-            ),
-            "suites": " ".join(
-                dict.fromkeys(
-                    test["suite"]
-                    for test in grouped_tests
-                    if test.get("suite")
-                )
-            ),
-            "benchmark": benchmark_name if is_benchmark else False,
-            "vms": vm_configs,
-        }
-
-        if "GIC_version" not in interrupt_flags:
-            platform_args = kao_runner.runtime_config.get("platform_args", "")
-            if isinstance(platform_args, str):
-                platform_args = [
-                    arg.strip()
-                    for arg in platform_args.split(",")
-                    if arg.strip()
-                ]
-            else:
-                platform_args = []
-            for arg in platform_args:
-                if arg.upper().startswith("GICV"):
-                    interrupt_flags["GIC_version"] = arg.upper()
-                    break
-
-        workload_prefix = "B" if is_benchmark else "T"
-        print_log(
-            "INFO",
-            f"{workload_prefix}{test_ids}: Building guests ...",
-            tab_level=0,
-        )
-        kao_runner.build_guests(platform, interrupt_flags)
-
-        print_log(
-            "INFO",
-            f"Building run image [{kao_runner.hypervisor}]...",
-            tab_level=0,
-        )
-        run_bin, _bin_name, _elf_name = kao_runner.build_run_bin(
-            wrkdir,
-            bao_cfg_repo_abs,
-            platform,
-        )
-
-        if kao_runner.runtime_config.get("firmware_build", True):
-            platform.build_firmware(run_bin, interrupt_flags)
-
-        kao_runner.launch_test(
-            run_bin,
-            interrupt_flags,
-            setup_name,
-            kao_runner.runtime_config.get("echo", "tf"),
-            platform,
-            benchmark_name=benchmark_name if is_benchmark else None,
-        )
+    kao_runner.launch_test(
+        run_bin,
+        interrupt_flags,
+        setup_name,
+        kao_runner.runtime_config.get("echo", "tf"),
+        platform,
+        benchmark_name=benchmark_name if is_benchmark else None,
+    )
 
 def main():
     print_log("INFO", "Starting Bao Kao Framework...", tab_level=0)
@@ -926,17 +891,6 @@ def main():
     wrkdir = prepare_wrkdir(CLI.wrkdir())
 
     kao_runner = TestFramework(wrkdir)
-
-    print_log("INFO", "Populating tests ...", tab_level=0)
-    kao_runner.populate_tests()
-    print_log("SUCCESS", "Tests populated.", tab_level=0)
-
-    print_log("INFO", "Populating benchmarks ...", tab_level=0)
-    benchmarks = kao_runner.populate_benchmarks()
-    if benchmarks:
-        print_log("SUCCESS", "Benchmarks populated.", tab_level=0)
-    else:
-        print_log("WARNING", "No runnable benchmarks discovered.", tab_level=0)
 
     print_log("INFO", "Populating platforms ...", tab_level=0)
     kao_runner.populate_plats()
@@ -950,14 +904,6 @@ def main():
     kao_runner.parse_args()
     print_log("SUCCESS", "Runtime TF configuration built.", tab_level=0)
 
-    print_log("INFO", "Populating guests to build ...", tab_level=0)
-    guests = kao_runner.populate_guests(kao_runner.tests_to_run)
-    print_log("SUCCESS", f"Guests populated: {', '.join(guests)}.", tab_level=0)
-
-    print_log("INFO", "Cleaning up build artifacts from previous runs...", tab_level=0)
-    kao_runner.cleanup()
-
-    print_log("INFO", "Setting up platform...", tab_level=0)
     requested_platform = kao_runner.runtime_config["platform"]
     platform_class = _resolve_platform_class(kao_runner.plats, requested_platform)
     if platform_class is None:
@@ -969,6 +915,11 @@ def main():
             f"Available platforms: {', '.join(available_platforms)}."
         )
     plat = platform_class(wrkdir)
+
+    print_log("INFO", "Cleaning up build artifacts from previous runs...", tab_level=0)
+    kao_runner.cleanup()
+
+    print_log("INFO", "Setting up platform...", tab_level=0)
     plat.setup_platform()
 
     if kao_runner.runtime_config["toolchain_build"]:
@@ -981,6 +932,23 @@ def main():
             f"'{plat.toolchain_prefix}' to be available in the environment.",
             tab_level=1,
         )
+
+    print_log("INFO", "Discovering tests ...", tab_level=0)
+    kao_runner.discover_tests(plat)
+    print_log("SUCCESS", f"Tests discovered: {len(kao_runner.tests)}.", tab_level=0)
+
+    print_log("INFO", "Populating benchmarks ...", tab_level=0)
+    if not kao_runner.populate_benchmarks():
+        print_log("WARNING", "No runnable benchmarks discovered.", tab_level=0)
+
+    if kao_runner.cli_args.generate_id_readme is not None:
+        kao_runner.generate_id_readme()
+
+    print_log("INFO", f"Selecting {kao_runner.run_type}s ...", tab_level=0)
+    if kao_runner.run_type == "benchmark":
+        kao_runner.select_benchmarks()
+    else:
+        kao_runner.select_tests(plat)
 
     test_ids = [test["id"] for test in kao_runner.tests_to_run]
     print_log(

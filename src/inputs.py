@@ -42,7 +42,7 @@ class CLI(InputProvider):
     def kao_config(self, platforms=None):
         """Parse and validate framework CLI arguments."""
         parser = argparse.ArgumentParser(
-            description="Bao Testing Framework",
+            description="Bao Kao Testing Framework",
             formatter_class=argparse.RawTextHelpFormatter,
         )
 
@@ -114,8 +114,11 @@ class CLI(InputProvider):
             const="all",
             default=None,
             help=(
-                "Comma-separated list of test IDs to execute. If --test "
-                "is provided without IDs, all discovered tests are executed."
+                "Comma-separated list of test IDs to execute, exactly as written in "
+                "the BAO_TEST registrations. If --test is provided without IDs, all "
+                "discovered tests are selected.\n"
+                "Combine with --tags, --exclude-tags, --env and --test-exclude "
+                "to narrow the selection."
             ),
         )
 
@@ -129,6 +132,33 @@ class CLI(InputProvider):
                 "which means all tests)."
             ),
             default=False,
+        )
+
+        parser.add_argument(
+            "--tags",
+            metavar="TAG[,TAG,...]",
+            help=(
+                "Comma-separated list of tags. Only tests carrying all of them "
+                "are selected."
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--exclude-tags",
+            metavar="TAG[,TAG,...]",
+            help="Comma-separated list of tags. Tests carrying any of them are excluded.",
+            default=None,
+        )
+
+        parser.add_argument(
+            "--env",
+            metavar="ENV[,ENV,...]",
+            help=(
+                "Comma-separated list of environments to run in. By default a test "
+                "runs in every environment it declares that the platform provides."
+            ),
+            default=None,
         )
 
         parser.add_argument(
@@ -220,6 +250,35 @@ class CLI(InputProvider):
             default=os.path.join(os.getcwd(), "wrkdir"),
         )
 
+        parser.add_argument(
+            "--tests-root",
+            metavar="DIR",
+            help=(
+                "Directory holding the project's tests: src/ with the test sources "
+                "and configs/ with the environments (default: ../tests relative to kao)"
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--tests-src",
+            metavar="DIR|FILE",
+            action="append",
+            help=(
+                "Test sources to scan, under <tests-root>/src: a directory (scanned "
+                "non-recursively) or a file. Repeat for several. Without it the whole "
+                "src/ tree is scanned."
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--configs",
+            metavar="DIR",
+            help="Directory holding the environment configs (default: <tests-root>/configs)",
+            default=None,
+        )
+
         args = parser.parse_args()
         return self.validate_args(args)
 
@@ -248,7 +307,12 @@ class CLI(InputProvider):
                 "arguments. Please choose one or the other."
             )
 
-        test_mode_requested = args.test is not None or bool(args.test_exclude)
+        test_filters_requested = any(
+            value is not None for value in (args.tags, args.exclude_tags, args.env)
+        )
+        test_mode_requested = (
+            args.test is not None or bool(args.test_exclude) or test_filters_requested
+        )
         benchmark_mode_requested = args.benchmark is not None or bool(args.benchmark_exclude)
         if test_mode_requested and benchmark_mode_requested:
             raise ValueError(
@@ -261,6 +325,21 @@ class CLI(InputProvider):
 
         if args.test_exclude:
             args.test_exclude = parse_csv_ids(args.test_exclude, "Excluded Test")
+
+        def parse_csv_tokens(csv_value, label):
+            if csv_value is None:
+                return None
+            tokens = [entry.strip().lower() for entry in csv_value.split(",")]
+            if not all(tokens):
+                raise ValueError(f"{label} list contains an empty entry.")
+            return tokens
+
+        for attr, label in (
+            ("tags", "Tag"),
+            ("exclude_tags", "Excluded tag"),
+            ("env", "Environment"),
+        ):
+            setattr(args, attr, parse_csv_tokens(getattr(args, attr), label))
 
         if args.benchmark is not None and args.benchmark != "all":
             args.benchmark = parse_csv_ids(args.benchmark, "Benchmark")
