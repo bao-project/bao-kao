@@ -115,7 +115,7 @@ class CLI(InputProvider):
             default=None,
             help=(
                 "Comma-separated list of test IDs to execute, exactly as written in "
-                "the BAO_TEST registrations. If --test is provided without IDs, all "
+                "the KAO_TEST registrations. If --test is provided without IDs, all "
                 "discovered tests are selected.\n"
                 "Combine with --tags, --exclude-tags, --env and --test-exclude "
                 "to narrow the selection."

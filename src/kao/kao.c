@@ -4,52 +4,52 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "testf.h"
+#include "kao.h"
 
-unsigned int testf_tests_total;
-unsigned int testf_tests_failed;
-unsigned int testf_failures;
+unsigned int kao_tests_total;
+unsigned int kao_tests_failed;
+unsigned int kao_failures;
 
-static void testf_run(const struct testf_test* test)
+static void kao_run(const struct kao_test* test)
 {
     if (cpu_is_master()) {
-        if (TESTF_LOG_LEVEL > 1) {
+        if (KAO_LOG_LEVEL > 1) {
             printf("\n");
             INFO_TAG();
             printf("Running [%s] %s\n", test->id, test->name);
         }
-        testf_tests_total++;
-        testf_failures = 0;
+        kao_tests_total++;
+        kao_failures = 0;
     }
 
     test->fn();
 
     if (cpu_is_master()) {
-        if (testf_failures) {
-            testf_tests_failed++;
-            if (TESTF_LOG_LEVEL > 1) {
+        if (kao_failures) {
+            kao_tests_failed++;
+            if (KAO_LOG_LEVEL > 1) {
                 FAIL_TAG();
                 printf("[%s] %s failed!\n", test->id, test->name);
             }
-        } else if (TESTF_LOG_LEVEL > 1) {
+        } else if (KAO_LOG_LEVEL > 1) {
             SUCC_TAG();
             printf("[%s] %s passed!\n", test->id, test->name);
         }
     }
 }
 
-void testf_entry(void)
+void kao_entry(void)
 {
     if (cpu_is_master()) {
         COMMAND_START();
     }
 
-    for (unsigned int i = 0; i < testf_tests_num; i++) {
-        testf_run(testf_tests[i]);
+    for (unsigned int i = 0; i < kao_tests_num; i++) {
+        kao_run(kao_tests[i]);
     }
 
     if (cpu_is_master()) {
-        if (testf_tests_total > 0) {
+        if (kao_tests_total > 0) {
             LOG_TESTS();
         } else {
             INFO_TAG();

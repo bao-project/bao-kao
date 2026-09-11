@@ -27,13 +27,13 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
 
     def __init__(self, cpu_freq, timer_freq, benchmark_name=None):
         self.test_tags = {
-            "c": "[TESTF-C]",
-            "py": "[TESTF-PY]",
-            "start": "[TESTF-C] START",
-            "end": "[TESTF-C] END",
-            "success": "[TESTF-C] SUCCESS",
-            "failure": "[TESTF-C] FAILURE",
-            "exit": "[TESTF-C] EXIT",
+            "c": "[KAO-C]",
+            "py": "[KAO-PY]",
+            "start": "[KAO-C] START",
+            "end": "[KAO-C] END",
+            "success": "[KAO-C] SUCCESS",
+            "failure": "[KAO-C] FAILURE",
+            "exit": "[KAO-C] EXIT",
             "boot_failure": "Synchronous Abort",
         }
         self.logger_commands = {

@@ -109,12 +109,12 @@ class BaremetalTest(Baremetal):
     @property
     def hook_dir(self):
         """kao's hook folder for this guest, laid out as the guest expects it."""
-        return os.path.join(self.kao_dir, "testf", "guests", "baremetal")
+        return os.path.join(self.kao_dir, "kao", "guests", "baremetal")
 
     @property
     def gen_dir(self):
-        """Where kao writes testf_all.c and testf_tests.c."""
-        return os.path.join(self.wrkdir, "guests", "testf")
+        """Where kao writes kao_all.c and kao_tests.c."""
+        return os.path.join(self.wrkdir, "guests", "kao")
 
     def _build_make_cmd(  # pylint: disable=too-many-arguments
         self, platform, arch, toolchain, irq_flags, log_level
@@ -128,8 +128,8 @@ class BaremetalTest(Baremetal):
             f"NAME={self.bin_name}",
             f"BUILD_DIR={self.bin_dir}",
             f"TESTF_TESTS_DIR={self.hook_dir}",
-            f"TESTF_GEN_DIR={self.gen_dir}",
-            f"TESTF_LOG_LEVEL={log_level}",
+            f"KAO_GEN_DIR={self.gen_dir}",
+            f"KAO_LOG_LEVEL={log_level}",
         ]
 
         if arch == "aarch64":
@@ -162,7 +162,7 @@ class BaremetalTest(Baremetal):
         """Return the tests registered in the given sources (paths under src/)."""
         print_log("INFO", "Discovering tests ...", tab_level=1)
         write_all_source(files, self.tests_srcs, self.gen_dir)
-        output = run_cmd(self.make_cmd + ["testf-discover"], cwd=self.srcs_dir)
+        output = run_cmd(self.make_cmd + ["kao-discover"], cwd=self.srcs_dir)
         return parse_discovery(output, self.tests_srcs)
 
     def build(  # pylint: disable=too-many-arguments

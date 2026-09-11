@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef TESTF_H
-#define TESTF_H
+#ifndef KAO_H
+#define KAO_H
 
-#include "testf_commands.h"
+#include "kao_commands.h"
 #include <stdio.h>
 
-#ifndef TESTF_LOG_LEVEL
-#define TESTF_LOG_LEVEL 2
+#ifndef KAO_LOG_LEVEL
+#define KAO_LOG_LEVEL 2
 #endif
 
 #if defined(no_rte) || defined(__clang_analyzer__) || defined(__CPPCHECK__)
@@ -24,7 +24,7 @@ static inline bool cpu_is_master(void)
 #include <cpu.h>
 #endif
 
-struct testf_test {
+struct kao_test {
     const char* id;
     const char* name;
     void (*fn)(void);
@@ -33,12 +33,12 @@ struct testf_test {
     const char* description;
 };
 
-extern unsigned int testf_tests_total;
-extern unsigned int testf_tests_failed;
-extern unsigned int testf_failures;
+extern unsigned int kao_tests_total;
+extern unsigned int kao_tests_failed;
+extern unsigned int kao_failures;
 
-extern const struct testf_test* const testf_tests[];
-extern const unsigned int testf_tests_num;
+extern const struct kao_test* const kao_tests[];
+extern const unsigned int kao_tests_num;
 
 #define TAGS(...) #__VA_ARGS__
 #define ENVS(...) #__VA_ARGS__
@@ -52,17 +52,17 @@ extern const unsigned int testf_tests_num;
  * are static, so whatever the table does not reference is dropped by the compiler.
  * The redeclaration rejects non-static test functions and wrong signatures.
  */
-#ifdef TESTF_DISCOVERY
-#define BAO_TEST(id, fn, tags, envs, desc) \
-    @BAO_TEST@ id @ fn @ tags @ envs @ desc @ __FILE__ @ __LINE__ @
+#ifdef KAO_DISCOVERY
+#define KAO_TEST(id, fn, tags, envs, desc) \
+    @KAO_TEST@ id @ fn @ tags @ envs @ desc @ __FILE__ @ __LINE__ @
 /* Optional, once per file: tags every test registered in this file carries. */
-#define FILE_TAGS(...) @BAO_FILE_TAGS@ #__VA_ARGS__ @ __FILE__ @
+#define FILE_TAGS(...) @KAO_FILE_TAGS@ #__VA_ARGS__ @ __FILE__ @
 #else
-#define BAO_TEST(id, fn, tags, envs, desc)                                  \
+#define KAO_TEST(id, fn, tags, envs, desc)                                  \
     static void fn(void);                                                   \
-    static const struct testf_test __attribute__((unused)) testf_test_##id = \
+    static const struct kao_test __attribute__((unused)) kao_test_##id = \
         { #id, #fn, fn, tags, envs, desc }
-#define FILE_TAGS(...) extern const int testf_file_tags_declared
+#define FILE_TAGS(...) extern const int kao_file_tags_declared
 #endif
 
 #define RED()         printf("\033[1;31m")
@@ -85,7 +85,7 @@ extern const unsigned int testf_tests_num;
     printf("[SUCCESS] "); \
     COLOR_RESET();
 
-#if (TESTF_LOG_LEVEL > 0)
+#if (KAO_LOG_LEVEL > 0)
 #define LOG_FAILURE()                                                 \
     do {                                                              \
         FAIL_TAG();                                                   \
@@ -95,44 +95,44 @@ extern const unsigned int testf_tests_num;
 #define LOG_FAILURE()
 #endif
 
-#define TESTF_RECORD_FAILURE() \
+#define KAO_RECORD_FAILURE() \
     do {                       \
         if (cpu_is_master()) { \
-            testf_failures++;  \
+            kao_failures++;  \
         }                      \
     } while (0)
 
 #define LOG_NOT_SUCCESS()                                                      \
     do {                                                                       \
         FAIL_TAG();                                                            \
-        printf("Total:%u Passed:%u Failed:%u\n", testf_tests_total,            \
-            testf_tests_total - testf_tests_failed, testf_tests_failed);       \
+        printf("Total:%u Passed:%u Failed:%u\n", kao_tests_total,            \
+            kao_tests_total - kao_tests_failed, kao_tests_failed);       \
     } while (0)
 
 #define LOG_SUCCESS()                                                          \
     do {                                                                       \
         SUCC_TAG();                                                            \
-        printf("Total:%u Passed:%u Failed:%u\n", testf_tests_total,            \
-            testf_tests_total - testf_tests_failed, testf_tests_failed);       \
+        printf("Total:%u Passed:%u Failed:%u\n", kao_tests_total,            \
+            kao_tests_total - kao_tests_failed, kao_tests_failed);       \
     } while (0)
 
 #define LOG_TESTS()                                                                \
     do {                                                                           \
-        if (TESTF_LOG_LEVEL > 1) {                                                 \
+        if (KAO_LOG_LEVEL > 1) {                                                 \
             printf("\n");                                                          \
             INFO_TAG();                                                            \
             printf("Final Report\n");                                              \
-            if (testf_tests_failed)                                                \
+            if (kao_tests_failed)                                                \
                 LOG_NOT_SUCCESS();                                                 \
             else                                                                   \
                 LOG_SUCCESS();                                                     \
         }                                                                          \
-        printf("[TESTF-C] TOTAL#%u SUCCESS#%u FAIL#%u\n\n", testf_tests_total,     \
-            testf_tests_total - testf_tests_failed, testf_tests_failed);           \
+        printf("[KAO-C] TOTAL#%u SUCCESS#%u FAIL#%u\n\n", kao_tests_total,     \
+            kao_tests_total - kao_tests_failed, kao_tests_failed);           \
     } while (0)
 
-#include "testf_assert.h"
+#include "kao_assert.h"
 
-void testf_entry(void);
+void kao_entry(void);
 
-#endif // TESTF_H
+#endif // KAO_H

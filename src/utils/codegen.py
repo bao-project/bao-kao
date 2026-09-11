@@ -5,10 +5,10 @@
 """
 Test discovery and code generation for the kao harness.
 
-Discovery is done by the C preprocessor: kao writes testf_all.c including every
-candidate source, the guest build preprocesses it with TESTF_DISCOVERY defined,
-and each BAO_TEST registration comes back as one marker line that is read here.
-The build then compiles a single generated testf_tests.c that includes the
+Discovery is done by the C preprocessor: kao writes kao_all.c including every
+candidate source, the guest build preprocesses it with KAO_DISCOVERY defined,
+and each KAO_TEST registration comes back as one marker line that is read here.
+The build then compiles a single generated kao_tests.c that includes the
 sources holding selected tests and ends with the table of selected descriptors.
 """
 
@@ -19,17 +19,17 @@ import re
 
 _STRING = r'(?:"(?:\\.|[^"\\])*"\s*)+'
 _MARKER_RE = re.compile(
-    r"@BAO_TEST@\s+(\S+)\s+@\s+(\S+)\s+@\s+(" + _STRING + r")@\s+(" + _STRING
+    r"@KAO_TEST@\s+(\S+)\s+@\s+(\S+)\s+@\s+(" + _STRING + r")@\s+(" + _STRING
     + r")@\s+(" + _STRING + r")@\s+(" + _STRING + r")@\s+(\d+)\s+@"
 )
-_FILE_TAGS_RE = re.compile(r"@BAO_FILE_TAGS@\s+(" + _STRING + r")@\s+(" + _STRING + r")@")
+_FILE_TAGS_RE = re.compile(r"@KAO_FILE_TAGS@\s+(" + _STRING + r")@\s+(" + _STRING + r")@")
 _STRING_LITERAL_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
 _ID_TOKEN_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
-ALL_SOURCE = "testf_all.c"
-TESTS_SOURCE = "testf_tests.c"
+ALL_SOURCE = "kao_all.c"
+TESTS_SOURCE = "kao_tests.c"
 
 _GENERATED_BANNER = (
     "/*\n"
@@ -136,7 +136,7 @@ def _file_tags(output, src_root):
 
 
 def parse_discovery(output, src_root):
-    """Turn the marker lines printed by `make testf-discover` into test records."""
+    """Turn the marker lines printed by `make kao-discover` into test records."""
     src_root = os.path.abspath(src_root)
     tests = [_parse_marker(match, src_root) for match in _MARKER_RE.finditer(output)]
 
@@ -160,32 +160,32 @@ def parse_discovery(output, src_root):
 
 
 def render_all_source(files, src_root):
-    """Render testf_all.c, the discovery unit including every candidate source."""
-    lines = [_GENERATED_BANNER, '#include "testf.h"', ""]
+    """Render kao_all.c, the discovery unit including every candidate source."""
+    lines = [_GENERATED_BANNER, '#include "kao.h"', ""]
     lines.extend(f'#include "{os.path.join(src_root, path)}"' for path in files)
     lines.append("")
     return "\n".join(lines)
 
 
 def render_tests_source(tests, src_root):
-    """Render testf_tests.c: the selected sources and the table, in that order."""
+    """Render kao_tests.c: the selected sources and the table, in that order."""
     ordered = list({test["id"]: test for test in tests}.values())
     files = list(dict.fromkeys(test["file"] for test in ordered))
 
-    lines = [_GENERATED_BANNER, '#include "testf.h"', ""]
+    lines = [_GENERATED_BANNER, '#include "kao.h"', ""]
     lines.extend(f'#include "{os.path.join(src_root, path)}"' for path in files)
     lines.append("")
-    lines.append("const struct testf_test* const testf_tests[] = {")
-    lines.extend(f"    &testf_test_{test['id']}," for test in ordered)
+    lines.append("const struct kao_test* const kao_tests[] = {")
+    lines.extend(f"    &kao_test_{test['id']}," for test in ordered)
     lines.append("};")
     lines.append("")
-    lines.append(f"const unsigned int testf_tests_num = {len(ordered)};")
+    lines.append(f"const unsigned int kao_tests_num = {len(ordered)};")
     lines.append("")
     return "\n".join(lines)
 
 
 def write_all_source(files, src_root, gen_dir):
-    """Write testf_all.c for discovery into gen_dir and return its path."""
+    """Write kao_all.c for discovery into gen_dir and return its path."""
     os.makedirs(gen_dir, exist_ok=True)
     path = os.path.join(gen_dir, ALL_SOURCE)
     with open(path, "w", encoding="utf8") as out:
@@ -194,7 +194,7 @@ def write_all_source(files, src_root, gen_dir):
 
 
 def write_tests_source(tests, src_root, gen_dir):
-    """Write testf_tests.c for the given selection into gen_dir and return its path."""
+    """Write kao_tests.c for the given selection into gen_dir and return its path."""
     os.makedirs(gen_dir, exist_ok=True)
     path = os.path.join(gen_dir, TESTS_SOURCE)
     with open(path, "w", encoding="utf8") as out:
