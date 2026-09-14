@@ -82,7 +82,7 @@ class Atf:
         else:
             raise ValueError(f"Unsupported platform for install: {platform}")
 
-        print_log("SUCCESS", "ATF installed", tab_level=2)
+        print_log("INFO", "ATF installed", tab_level=2)
 
 
 atf = Atf  # pylint: disable=invalid-name

@@ -29,6 +29,17 @@ class CLI(InputProvider):
     """Command-line input provider."""
 
     @staticmethod
+    def log_level():
+        """Read the log level before parsing the full CLI."""
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("-l", "--log-level", default=1)
+        args, _ = parser.parse_known_args()
+        try:
+            return int(args.log_level)
+        except ValueError:
+            return 1
+
+    @staticmethod
     def wrkdir():
         """Read the working directory before parsing the full CLI."""
         parser = argparse.ArgumentParser(add_help=False)
@@ -42,7 +53,7 @@ class CLI(InputProvider):
     def kao_config(self, platforms=None):
         """Parse and validate framework CLI arguments."""
         parser = argparse.ArgumentParser(
-            description="Bao Testing Framework",
+            description="Bao Kao Testing Framework",
             formatter_class=argparse.RawTextHelpFormatter,
         )
 
@@ -50,12 +61,14 @@ class CLI(InputProvider):
             "-l",
             "--log-level",
             help=(
-                "Amount of information produced by the framework:\n"
-                "0 - only logs the final report\n"
-                "1 - logs failed tests and the final report\n"
-                "2 - logs all test results and the final report"
+                "Verbosity of the framework and of the tests:\n"
+                "0 - test results only, plus warnings and errors\n"
+                "1 - one line per test with where failures happened, and the "
+                "framework's main steps (default)\n"
+                "2 - everything: 'Running' lines, messages of passing tests, "
+                "every framework step"
             ),
-            default=0,
+            default=1,
         )
 
         parser.add_argument(
@@ -77,7 +90,7 @@ class CLI(InputProvider):
         parser.add_argument(
             "-p",
             "--platform",
-            help="Target platform to run the tests/benchmarks on" + plat_lst,
+            help="Target platform to run the tests on" + plat_lst,
             required=True,
             default="",
         )
@@ -114,8 +127,11 @@ class CLI(InputProvider):
             const="all",
             default=None,
             help=(
-                "Comma-separated list of test IDs to execute. If --test "
-                "is provided without IDs, all discovered tests are executed."
+                "Comma-separated list of test IDs to execute, exactly as written in "
+                "the KAO_TEST registrations. If --test is provided without IDs, all "
+                "discovered tests are selected.\n"
+                "Combine with --tags, --exclude-tags, --env and --test-exclude "
+                "to narrow the selection."
             ),
         )
 
@@ -132,32 +148,36 @@ class CLI(InputProvider):
         )
 
         parser.add_argument(
+            "--tags",
+            metavar="TAG[,TAG,...]",
+            help=(
+                "Comma-separated list of tags. Only tests carrying all of them "
+                "are selected."
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--exclude-tags",
+            metavar="TAG[,TAG,...]",
+            help="Comma-separated list of tags. Tests carrying any of them are excluded.",
+            default=None,
+        )
+
+        parser.add_argument(
+            "--env",
+            metavar="ENV[,ENV,...]",
+            help=(
+                "Comma-separated list of environments to run in. By default a test "
+                "runs in every environment it declares that the platform provides."
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
             "--no-logger",
             action="store_true",
             help="Disables logging functionality",
-            default=False,
-        )
-
-        parser.add_argument(
-            "-b",
-            "--benchmark",
-            metavar="ID[,ID,...]",
-            nargs="?",
-            const="all",
-            default=None,
-            help=(
-                "Comma-separated list of benchmark IDs to execute. If --benchmark "
-                "is provided without IDs, all discovered benchmarks are executed."
-            ),
-        )
-
-        parser.add_argument(
-            "--benchmark-exclude",
-            metavar="ID[,ID,...]",
-            help=(
-                "Assumes all benchmarks are executed, excluding a comma-separated "
-                "list of benchmark IDs."
-            ),
             default=False,
         )
 
@@ -168,8 +188,7 @@ class CLI(InputProvider):
             const="README.workload-ids.md",
             default=None,
             help=(
-                "Generate a Markdown file mapping discovered test and benchmark "
-                "IDs, then exit.\n"
+                "Print the discovered tests and exit.\n"
                 "If PATH is omitted, writes to README.workload-ids.md"
             ),
         )
@@ -220,6 +239,35 @@ class CLI(InputProvider):
             default=os.path.join(os.getcwd(), "wrkdir"),
         )
 
+        parser.add_argument(
+            "--tests-root",
+            metavar="DIR",
+            help=(
+                "Directory holding the project's tests: src/ with the test sources "
+                "and envs/ with the environments (default: ../tests relative to kao)"
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--tests-src",
+            metavar="DIR|FILE",
+            action="append",
+            help=(
+                "Test sources to scan, under <tests-root>/src: a directory (scanned "
+                "non-recursively) or a file. Repeat for several. Without it the whole "
+                "src/ tree is scanned."
+            ),
+            default=None,
+        )
+
+        parser.add_argument(
+            "--envs",
+            metavar="DIR",
+            help="Directory holding the environments (default: <tests-root>/envs)",
+            default=None,
+        )
+
         args = parser.parse_args()
         return self.validate_args(args)
 
@@ -242,34 +290,26 @@ class CLI(InputProvider):
                 "using the -p or --platform argument."
             )
 
-        if args.benchmark is not None and args.benchmark_exclude:
-            raise ValueError(
-                "Cannot specify both --benchmark and --benchmark-exclude "
-                "arguments. Please choose one or the other."
-            )
-
-        test_mode_requested = args.test is not None or bool(args.test_exclude)
-        benchmark_mode_requested = args.benchmark is not None or bool(args.benchmark_exclude)
-        if test_mode_requested and benchmark_mode_requested:
-            raise ValueError(
-                "Cannot combine test and benchmark selection arguments. "
-                "Please choose either tests or benchmarks."
-            )
-
         if args.test is not None and args.test != "all":
             args.test = parse_csv_ids(args.test, "Test")
 
         if args.test_exclude:
             args.test_exclude = parse_csv_ids(args.test_exclude, "Excluded Test")
 
-        if args.benchmark is not None and args.benchmark != "all":
-            args.benchmark = parse_csv_ids(args.benchmark, "Benchmark")
+        def parse_csv_tokens(csv_value, label):
+            if csv_value is None:
+                return None
+            tokens = [entry.strip().lower() for entry in csv_value.split(",")]
+            if not all(tokens):
+                raise ValueError(f"{label} list contains an empty entry.")
+            return tokens
 
-        if args.benchmark_exclude:
-            args.benchmark_exclude = parse_csv_ids(
-                args.benchmark_exclude,
-                "Excluded Benchmark",
-            )
+        for attr, label in (
+            ("tags", "Tag"),
+            ("exclude_tags", "Excluded tag"),
+            ("env", "Environment"),
+        ):
+            setattr(args, attr, parse_csv_tokens(getattr(args, attr), label))
 
         valid_echo_options = {"full", "tf", "none"}
         if args.echo not in valid_echo_options:

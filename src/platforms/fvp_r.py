@@ -96,7 +96,7 @@ class FvpR(GenericEmulator):  # pylint: disable=too-many-instance-attributes
         """Download and extract the FVP model when it is not available."""
         fvp_bin = self.find_fvp_binary()
         if fvp_bin:
-            print_log("SUCCESS", f"FVP BaseR ready at {fvp_bin}", tab_level=1)
+            print_log("INFO", f"FVP BaseR ready at {fvp_bin}", tab_level=1)
             return fvp_bin
 
         print_log("INFO", "FVP BaseR model not found. Downloading...", tab_level=1)
@@ -123,7 +123,7 @@ class FvpR(GenericEmulator):  # pylint: disable=too-many-instance-attributes
                 "Error extracting FVP model: FVP_BaseR_AEMv8R binary not found"
             )
 
-        print_log("SUCCESS", f"FVP BaseR ready at {fvp_bin}", tab_level=1)
+        print_log("INFO", f"FVP BaseR ready at {fvp_bin}", tab_level=1)
         return fvp_bin
 
     def build_toolchain(self):
@@ -135,7 +135,7 @@ class FvpR(GenericEmulator):  # pylint: disable=too-many-instance-attributes
         ).strip()
         toolchain_instance = Aarch64NoneElf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
-        print_log("SUCCESS", "Toolchain set up successfully!", tab_level=2)
+        print_log("INFO", "Toolchain set up successfully!", tab_level=2)
 
     @staticmethod
     def build_firmware(run_bin=None, interrupt_flags=None):  # pylint: disable=unused-argument

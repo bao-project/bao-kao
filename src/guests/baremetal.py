@@ -18,6 +18,11 @@ if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
 from utils.process import run_cmd  # pylint: disable=wrong-import-position,import-error
+from utils.codegen import (  # pylint: disable=wrong-import-position,import-error
+    parse_discovery,
+    write_all_source,
+    write_tests_source,
+)
 print_log = getattr(importlib.import_module("constants"), "print_log")
 
 
@@ -27,9 +32,7 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
     def __init__(  # pylint: disable=too-many-arguments
         self,
         wrkdir,
-        list_tests,
-        list_suites,
-        benchmark,
+        tests,
         kao_dir,
         tests_srcs,
         bin_name,
@@ -42,20 +45,19 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
 
         self.srcs_dir = os.path.join(wrkdir, "guests", self.guest_name)
         self.kao_dir = kao_dir
-        self.tests_srcs = tests_srcs
+        self.tests_srcs = os.path.abspath(tests_srcs)
         self.bin_dir = os.path.join(wrkdir, "guests", "build")
 
-        self.list_tests = list_tests
-        self.list_suites = list_suites
+        self.tests = tests
         self.build_flags = build_flags
         self.bin_name = bin_name
-        self.benchmark = benchmark
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
         self.git_rev = "2b14d908026f18254333230d457fb8f04d4a6ff4"
 
         self.use_local_repo = bool(local_repo_path)
         self.local_repo_path = local_repo_path
+        self.make_cmd = None
 
         os.makedirs(self.srcs_dir, exist_ok=True)
         os.makedirs(self.bin_dir, exist_ok=True)
@@ -89,67 +91,47 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
 
     def clean(self):
         """Clean the baremetal guest build artifacts."""
-        if os.path.exists(self.srcs_dir):
-            run_cmd(["make", "clean"], cwd=self.srcs_dir)
         if os.path.exists(self.bin_dir):
             shutil.rmtree(self.bin_dir)
 
 
 class BaremetalTest(Baremetal):
-    """Builder for Bao baremetal test guests."""
+    """Builder for Bao baremetal test guests.
 
-    @staticmethod
-    def _prepare_tests_tree(srcs_dir, tests_srcs_abs):
-        """Refresh the local tests tree used by the guest build."""
-        tests_dst = os.path.join(srcs_dir, "tests")
-        if os.path.exists(tests_dst):
-            shutil.rmtree(tests_dst)
+    The guest is built in place: TESTF_TESTS_DIR points at kao's hook folder for
+    this guest (which pulls in the shared harness and headers), the project's
+    test sources are included from where they live, and only the files kao
+    generates go to the work directory.
+    """
 
-        os.makedirs(tests_dst, exist_ok=True)
+    @property
+    def hook_dir(self):
+        """kao's hook folder for this guest, laid out as the guest expects it."""
+        return os.path.join(self.kao_dir, "kao", "guests", "baremetal")
 
-        bao_tests_src_dir = os.path.join(tests_srcs_abs, "src")
-        shutil.copytree(
-            bao_tests_src_dir,
-            os.path.join(tests_dst, "src"),
-            dirs_exist_ok=True,
-        )
-        return tests_dst
-
-    def _run_codegen(self, tests_srcs_abs, tests_dst):
-        """Generate the consolidated test entry source file."""
-        print_log("INFO", "Running codegen.py ...", tab_level=1)
-        codegen_dir = os.path.join(self.kao_dir, "utils")
-        generated_output = os.path.join(tests_dst, "src", "testf_entry.c")
-        run_cmd(
-            ["python3", "codegen.py", "-dir", tests_srcs_abs, "-o", generated_output],
-            cwd=codegen_dir,
-        )
+    @property
+    def gen_dir(self):
+        """Where kao writes kao_all.c and kao_tests.c."""
+        return os.path.join(self.wrkdir, "guests", "kao")
 
     def _build_make_cmd(  # pylint: disable=too-many-arguments
-        self, platform, arch, toolchain, irq_flags, log_level, tests_dst
+        self, platform, arch, toolchain, irq_flags, log_level
     ):
         """Construct the make command for the baremetal guest build."""
         make_cmd = [
             "make",
             f"PLATFORM={platform}",
-            "BAO_TEST=1",
             "BAREMETAL_TESTS=1",
-            f"TESTF_LOG_LEVEL={log_level}",
             f"CROSS_COMPILE={toolchain}",
-            f"TESTF_TESTS_DIR={tests_dst}",
+            f"NAME={self.bin_name}",
+            f"BUILD_DIR={self.bin_dir}",
+            f"TESTF_TESTS_DIR={self.hook_dir}",
+            f"KAO_GEN_DIR={self.gen_dir}",
+            f"KAO_LOG_LEVEL={log_level}",
         ]
 
-        if self.list_tests:
-            tests = " ".join(str(self.list_tests).split())
-            if tests:
-                make_cmd.append(f"TESTS={tests}")
-        elif self.list_suites:
-            suites = " ".join(str(self.list_suites).split())
-            if suites:
-                make_cmd.append(f"SUITES={suites}")
-
-        if arch == "aarch64" and irq_flags:
-            gic_version = irq_flags.get("GIC_version", "GICV3")
+        if arch == "aarch64":
+            gic_version = (irq_flags or {}).get("GIC_version", "GICV3")
             make_cmd.append(f"GIC_VERSION={gic_version}")
 
         generic_flags = self.build_flags.get("generic_flags")
@@ -162,23 +144,24 @@ class BaremetalTest(Baremetal):
 
         return make_cmd
 
-    def _copy_build_outputs(self, platform):
-        """Copy generated guest artifacts to the framework output directory."""
-        os.makedirs(self.bin_dir, exist_ok=True)
+    def prepare(  # pylint: disable=too-many-arguments
+        self,
+        platform,
+        arch,
+        toolchain,
+        irq_flags,
+        log_level="2",
+    ):
+        """Fetch the guest and fix the make invocation."""
+        self.fetch_sources()
+        self.make_cmd = self._build_make_cmd(platform, arch, toolchain, irq_flags, log_level)
 
-        built_dir = os.path.join(self.srcs_dir, "build", platform)
-        out_bin_path = os.path.join(self.bin_dir, f"{self.bin_name}.bin")
-        out_elf_path = os.path.join(self.bin_dir, f"{self.bin_name}.elf")
-
-        shutil.copy(
-            os.path.join(built_dir, f"{self.guest_name}.bin"),
-            out_bin_path,
-        )
-        shutil.copy(
-            os.path.join(built_dir, f"{self.guest_name}.elf"),
-            out_elf_path,
-        )
-        return out_bin_path
+    def discover(self, files):
+        """Return the tests registered in the given sources (paths under src/)."""
+        print_log("INFO", "Discovering tests ...", tab_level=1)
+        write_all_source(files, self.tests_srcs, self.gen_dir)
+        output = run_cmd(self.make_cmd + ["kao-discover"], cwd=self.srcs_dir)
+        return parse_discovery(output, self.tests_srcs)
 
     def build(  # pylint: disable=too-many-arguments
         self,
@@ -189,30 +172,14 @@ class BaremetalTest(Baremetal):
         log_level="2",
     ):
         """Build the baremetal test guest and return the output binary path."""
-        self.fetch_sources()
-
-        tests_srcs_abs = os.path.abspath(self.tests_srcs)
-        tests_dst = self._prepare_tests_tree(self.srcs_dir, tests_srcs_abs)
-        self._run_codegen(tests_srcs_abs, tests_dst)
+        self.prepare(platform, arch, toolchain, irq_flags, log_level)
+        write_tests_source(self.tests, self.tests_srcs, self.gen_dir)
 
         print_log("INFO", "Building baremetal guest...", tab_level=1)
-        make_cmd = self._build_make_cmd(
-            platform,
-            arch,
-            toolchain,
-            irq_flags,
-            log_level,
-            tests_dst,
-        )
+        run_cmd(self.make_cmd, cwd=self.srcs_dir)
 
-        run_cmd(make_cmd, cwd=self.srcs_dir)
-
-        out_bin_path = self._copy_build_outputs(platform)
-        print_log(
-            "SUCCESS",
-            f"Built baremetal guest stored at {self.bin_dir}",
-            tab_level=1,
-        )
+        out_bin_path = os.path.join(self.bin_dir, f"{self.bin_name}.bin")
+        print_log("INFO", f"Built baremetal guest stored at {out_bin_path}", tab_level=1)
         return out_bin_path
 
 

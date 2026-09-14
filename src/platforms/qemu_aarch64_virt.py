@@ -105,7 +105,7 @@ class QemuAarch64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
             cwd=self.srcs_dir,
         ).wait()
 
-        print_log("SUCCESS", f"QEMU {self.qemu_version} installed successfully!", tab_level=1)
+        print_log("INFO", f"QEMU {self.qemu_version} installed successfully!", tab_level=1)
 
     def build_toolchain(self):
         """Install or locate the AArch64 bare-metal toolchain."""
@@ -115,7 +115,7 @@ class QemuAarch64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
         ).strip()
         toolchain_instance = Aarch64NoneElf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
-        print_log("SUCCESS", "Toolchain set up successfully!", tab_level=1)
+        print_log("INFO", "Toolchain set up successfully!", tab_level=1)
 
     def build_firmware(self, run_bin=None, interrupt_flags=None):  # pylint: disable=unused-argument
         """Build ATF and U-Boot firmware for the QEMU AArch64 platform."""

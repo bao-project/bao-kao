@@ -12,10 +12,6 @@ import time
 
 import serial
 
-try:
-    from prettytable import PrettyTable as PRETTY_TABLE_CLASS  # pylint: disable=import-error
-except ModuleNotFoundError:
-    PRETTY_TABLE_CLASS = None
 
 CUR_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.join(CUR_DIR, "platforms")))
@@ -23,17 +19,17 @@ from generic_platform import FvpTerminalPort  # pylint: disable=import-error,wro
 
 
 class TestLogger:  # pylint: disable=too-many-instance-attributes
-    """Read platform logs and parse test/benchmark results."""
+    """Read platform logs and parse test results."""
 
-    def __init__(self, cpu_freq, timer_freq, benchmark_name=None):
+    def __init__(self):
         self.test_tags = {
-            "c": "[TESTF-C]",
-            "py": "[TESTF-PY]",
-            "start": "[TESTF-C] START",
-            "end": "[TESTF-C] END",
-            "success": "[TESTF-C] SUCCESS",
-            "failure": "[TESTF-C] FAILURE",
-            "exit": "[TESTF-C] EXIT",
+            "c": "[KAO-C]",
+            "py": "[KAO-PY]",
+            "start": "[KAO-C] START",
+            "end": "[KAO-C] END",
+            "success": "[KAO-C] SUCCESS",
+            "failure": "[KAO-C] FAILURE",
+            "exit": "[KAO-C] EXIT",
             "boot_failure": "Synchronous Abort",
         }
         self.logger_commands = {
@@ -45,7 +41,6 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
             "full": self.echo_log_full,
             "tf": self.echo_log_tf,
             "none": self.echo_log_none,
-            "benchmark": self.echo_log_benchmark,
         }
 
         self.serial_port = ""
@@ -55,9 +50,6 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
             "event_completed_test": threading.Event(),
         }
         self.test_results = ""
-        self.cpu_freq = cpu_freq
-        self.timer_freq = timer_freq
-        self.benchmark_name = benchmark_name
 
     @staticmethod
     def print_message(message, message_type="info"):
@@ -114,7 +106,7 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
         self.list_events["event_thread_finished"].set()
 
     def echo_log_tf(self, serial_results):
-        """Print only the Bao Kao Framework section of the serial output."""
+        """Print the test output between START and END, without the protocol lines."""
         is_kao_section = False
         for line in serial_results:
             if self.test_tags["start"] in line:
@@ -129,122 +121,23 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
                     + "\n"
                 )
                 is_kao_section = True
+                continue
 
-            elif self.test_tags["end"] in line:
+            if self.test_tags["end"] in line:
                 is_kao_section = False
+                continue
+
+            # Commands and the machine-readable summary are for kao, not the reader.
+            if is_kao_section and self.test_tags["c"] not in line:
                 print(line, end="")
 
-            if is_kao_section:
-                print(line, end="")
-
-        self.list_events["event_thread_finished"].set()
-
-    def echo_log_benchmark(self, serial_results):
-        """Print benchmark summary table from serial samples."""
-        if self.list_events["event_thread_finished"].is_set():
-            return
-
-        print(
-            "\n"
-            + "========================================="
-            + "=========================================\n"
-            + "                            Bao Kao Framework\n"
-            + "                                 RESULTS\n"
-            + "========================================="
-            + "========================================="
-            + "\n"
-        )
-
-        result_tag = "[SAMPLE]"
-
-        def _extract_samples(lines):
-            values = []
-            for line in lines:
-                if result_tag in line:
-                    try:
-                        values.append(float(line.split(result_tag)[-1].strip()))
-                    except ValueError:
-                        pass
-            return values
-
-        def _extract_ctx_switch_values(lines):
-            values = []
-            for line in lines:
-                stripped = line.strip()
-                if not stripped.startswith("Ctx switch:"):
-                    continue
-                _, raw_value = stripped.split(":", 1)
-                raw_value = raw_value.strip()
-                try:
-                    values.append(float(raw_value))
-                except ValueError:
-                    pass
-            return values
-
-        def _stats(values):
-            if not values:
-                return None
-            n_values = len(values)
-            avg_value = sum(values) / n_values
-            max_value = max(values)
-            min_value = min(values)
-            variance = sum((value - avg_value) ** 2 for value in values) / n_values
-            std_dev = variance**0.5
-            return {
-                "count": n_values,
-                "average": avg_value,
-                "std_dev": std_dev,
-                "max": max_value,
-                "min": min_value,
-            }
-
-        def _format_value(value):
-            if float(value).is_integer():
-                return str(int(value))
-            return f"{value:.3f}"
-
-        def _print_table(values):
-            summary = _stats(values)
-            if summary is None:
-                print("No benchmark numeric results found.")
-                return
-
-            benchmark_label = self.benchmark_name if self.benchmark_name else "benchmark"
-            if PRETTY_TABLE_CLASS is None:
-                print(f"Benchmark: {benchmark_label}")
-                print(f"N: {summary['count']}")
-                print(f"Average: {_format_value(summary['average'])}")
-                print(f"Std Dev: {_format_value(summary['std_dev'])}")
-                print(f"Max: {_format_value(summary['max'])}")
-                print(f"Min: {_format_value(summary['min'])}")
-                return
-
-            table = PRETTY_TABLE_CLASS()
-            table.title = "Benchmark summary"
-            table.field_names = ["Benchmark", "N", "Average", "Std Dev", "Max", "Min"]
-            table.add_row(
-                [
-                    benchmark_label,
-                    summary["count"],
-                    _format_value(summary["average"]),
-                    _format_value(summary["std_dev"]),
-                    _format_value(summary["max"]),
-                    _format_value(summary["min"]),
-                ]
-            )
-
-            print(table)
-
-        sample_values = _extract_samples(serial_results)
-        values = sample_values if sample_values else _extract_ctx_switch_values(serial_results)
-        _print_table(values)
         self.list_events["event_thread_finished"].set()
 
     def echo_log_none(self, _serial_results=None):
         """Ignore serial output."""
         self.list_events["event_thread_finished"].set()
 
-    def connect_to_platform_port(self, ports_list, echo, is_benchmark=False):
+    def connect_to_platform_port(self, ports_list, echo):
         """Connect to each serial port and start one listener thread per port."""
         threads = []
 
@@ -252,7 +145,7 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
             ser = self.open_connection(port)
             listener_thread = threading.Thread(
                 target=self.listener,
-                args=(ser, echo, is_benchmark),
+                args=(ser, echo),
             )
             threads.append(listener_thread)
 
@@ -278,7 +171,6 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
         self,
         ser_port,
         echo,
-        is_benchmark=False,
     ):  # pylint: disable=too-many-branches,too-many-statements
         """Read platform serial stream and dispatch parser/actions."""
         self.serial_port = ser_port
@@ -316,10 +208,10 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
                         self.test_results = line
                         self.clear_timeout()
 
-        def handle_test_completion(res_log, boot_failure, benchmark_mode=False):
+        def handle_test_completion(res_log, boot_failure):
             results = {}
             self.clear_timeout()
-            if not benchmark_mode and not boot_failure:
+            if not boot_failure:
                 for line in reversed(res_log):
                     if self.test_tags["c"] in line and "END" not in line:
                         for item in line.split():
@@ -358,16 +250,8 @@ class TestLogger:  # pylint: disable=too-many-instance-attributes
                         break
 
                 if res_log:
-                    handle_test_completion(res_log, boot_failure, is_benchmark)
-                    if is_benchmark:
-                        if echo == "full":
-                            self.echo_log_full(res_log)
-                        elif echo == "none":
-                            self.echo_log_none(res_log)
-                        else:
-                            self.echo_log_benchmark(res_log)
-                    else:
-                        self.log_level[echo](res_log)
+                    handle_test_completion(res_log, boot_failure)
+                    self.log_level[echo](res_log)
 
         finally:
             try:

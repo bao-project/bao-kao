@@ -72,7 +72,7 @@ class Opensbi:
         if not os.path.isfile(fw_elf):
             raise FileNotFoundError(f"Expected OpenSBI firmware not found: {fw_elf}")
 
-        print_log("SUCCESS", f"OpenSBI built successfully for {platform}.", tab_level=2)
+        print_log("INFO", f"OpenSBI built successfully for {platform}.", tab_level=2)
         return fw_elf
 
     def install(self, platform, firmware_dir):
@@ -91,7 +91,7 @@ class Opensbi:
         dst_elf = os.path.join(firmware_dir, "opensbi.elf")
         shutil.copy(src_elf, dst_elf)
 
-        print_log("SUCCESS", f"Installed OpenSBI to {dst_elf}", tab_level=2)
+        print_log("INFO", f"Installed OpenSBI to {dst_elf}", tab_level=2)
         return dst_elf
 
 

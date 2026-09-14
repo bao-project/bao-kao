@@ -134,7 +134,7 @@ class QemuRiscv64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
             )
 
         self.qemu_bin = local_qemu
-        print_log("SUCCESS", f"QEMU {self.qemu_version} ready!", tab_level=1)
+        print_log("INFO", f"QEMU {self.qemu_version} ready!", tab_level=1)
 
     def build_toolchain(self):
         """Install or locate the RISC-V toolchain."""
@@ -144,7 +144,7 @@ class QemuRiscv64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
         ).strip()
         toolchain_instance = Riscv64UnknownElf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
-        print_log("SUCCESS", "Toolchain set up successfully!", tab_level=2)
+        print_log("INFO", "Toolchain set up successfully!", tab_level=2)
 
     def build_firmware(self, run_bin=None, _interrupt_flags=None):
         """Build the OpenSBI firmware payload for Bao."""
@@ -160,7 +160,7 @@ class QemuRiscv64Virt(GenericEmulator):  # pylint: disable=too-many-instance-att
         )
         final_path = os.path.join(self.firmware_dir, "opensbi.elf")
         shutil.copy(opensbi_elf, final_path)
-        print_log("SUCCESS", f"OpenSBI ready at {final_path}", tab_level=2)
+        print_log("INFO", f"OpenSBI ready at {final_path}", tab_level=2)
         return final_path
 
     @staticmethod
