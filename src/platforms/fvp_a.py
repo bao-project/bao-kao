@@ -105,7 +105,7 @@ class FvpA(GenericEmulator):  # pylint: disable=too-many-instance-attributes
         """Download and extract the FVP model when it is not available."""
         fvp_binary = self.find_fvp_binary()
         if fvp_binary:
-            print_log("SUCCESS", f"FVP BaseA ready at {fvp_binary}", tab_level=1)
+            print_log("INFO", f"FVP BaseA ready at {fvp_binary}", tab_level=1)
             return fvp_binary
 
         print_log("INFO", "FVP BaseA model not found. Downloading...", tab_level=1)
@@ -130,7 +130,7 @@ class FvpA(GenericEmulator):  # pylint: disable=too-many-instance-attributes
                 "Error extracting FVP model: FVP_Base_RevC-2xAEMvA binary not found"
             )
 
-        print_log("SUCCESS", f"FVP BaseA ready at {fvp_bin}", tab_level=1)
+        print_log("INFO", f"FVP BaseA ready at {fvp_bin}", tab_level=1)
         return fvp_bin
 
     # ------------------------------------------------------------------
@@ -143,7 +143,7 @@ class FvpA(GenericEmulator):  # pylint: disable=too-many-instance-attributes
         host_architecture = subprocess.check_output(["uname", "-m"], text=True,).strip()
         toolchain_instance = Aarch64NoneElf(self.toolchain, host_architecture)
         self.toolchain = toolchain_instance.install()
-        print_log("SUCCESS", "Toolchain set up successfully!", tab_level=2)
+        print_log("INFO", "Toolchain set up successfully!", tab_level=2)
 
     # ------------------------------------------------------------------
     # Firmware
@@ -173,7 +173,7 @@ class FvpA(GenericEmulator):  # pylint: disable=too-many-instance-attributes
                     f"Firmware build failed: {label} not found at {artifact}"
                 )
 
-        print_log("SUCCESS", "Firmware build complete.", tab_level=1)
+        print_log("INFO", "Firmware build complete.", tab_level=1)
         return {"bl1": bl1_bin, "fip": fip_bin}
 
     # ------------------------------------------------------------------

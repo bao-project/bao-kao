@@ -29,6 +29,17 @@ class CLI(InputProvider):
     """Command-line input provider."""
 
     @staticmethod
+    def log_level():
+        """Read the log level before parsing the full CLI."""
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("-l", "--log-level", default=1)
+        args, _ = parser.parse_known_args()
+        try:
+            return int(args.log_level)
+        except ValueError:
+            return 1
+
+    @staticmethod
     def wrkdir():
         """Read the working directory before parsing the full CLI."""
         parser = argparse.ArgumentParser(add_help=False)
@@ -50,10 +61,12 @@ class CLI(InputProvider):
             "-l",
             "--log-level",
             help=(
-                "Amount of information produced by the tests:\n"
-                "0 - the final report only\n"
-                "1 - one line per test, where failures happened, and the report (default)\n"
-                "2 - also the 'Running' lines and the messages of passing tests"
+                "Verbosity of the framework and of the tests:\n"
+                "0 - test results only, plus warnings and errors\n"
+                "1 - one line per test with where failures happened, and the "
+                "framework's main steps (default)\n"
+                "2 - everything: 'Running' lines, messages of passing tests, "
+                "every framework step"
             ),
             default=1,
         )

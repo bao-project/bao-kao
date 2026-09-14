@@ -79,7 +79,7 @@ class Uboot:
         print_log("INFO", f"Building U-Boot for platform {platform}...", tab_level=2)
         run_command(["make", f"-j{os.cpu_count()}"], cwd=self.src_dir, env=env)
 
-        print_log("SUCCESS", f"U-Boot built successfully for {platform}.", tab_level=2)
+        print_log("INFO", f"U-Boot built successfully for {platform}.", tab_level=2)
         return os.path.join(self.src_dir, "u-boot.bin")
 
 

@@ -181,7 +181,7 @@ class BaremetalTest(Baremetal):
         run_cmd(self.make_cmd, cwd=self.srcs_dir)
 
         out_bin_path = os.path.join(self.bin_dir, f"{self.bin_name}.bin")
-        print_log("SUCCESS", f"Built baremetal guest stored at {out_bin_path}", tab_level=1)
+        print_log("INFO", f"Built baremetal guest stored at {out_bin_path}", tab_level=1)
         return out_bin_path
 
 

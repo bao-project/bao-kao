@@ -54,7 +54,9 @@ if os.path.exists(BENCHS_DIR) and os.listdir(BENCHS_DIR):
 
 # Bao Kao Framework imports
 CLI = getattr(importlib.import_module("inputs"), "CLI")
-print_log = getattr(importlib.import_module("constants"), "print_log")
+constants_module = importlib.import_module("constants")
+print_log = getattr(constants_module, "print_log")
+set_log_level = getattr(importlib.import_module("constants"), "set_log_level")
 bao = getattr(importlib.import_module("hypervisor.bao.bao"), "bao")
 config_renderer_module = importlib.import_module("hypervisor.bao.config_renderer")
 read_config = getattr(config_renderer_module, "read_config")
@@ -297,7 +299,7 @@ class TestFramework:
             env=env,
         )
 
-        print_log("SUCCESS", "Successfully built final image!", tab_level=1)
+        print_log("INFO", "Successfully built final image!", tab_level=1)
         return out_bin_path, bin_name, elf_name
 
     def discover_tests(self, platform):
@@ -521,7 +523,7 @@ class TestFramework:
             self.benchmarks, args.benchmark, args.benchmark_exclude
         )
         ids = ", ".join(str(bench["id"]) for bench in self.tests_to_run)
-        print_log("SUCCESS", f"Benchmarks to run: {ids}.", tab_level=0)
+        print_log("INFO", f"Benchmarks to run: {ids}.", tab_level=0)
         return self.tests_to_run
 
     def select_tests(self, platform):
@@ -575,7 +577,7 @@ class TestFramework:
 
         for env in dict.fromkeys(test["env"] for test in self.tests_to_run):
             ids = ", ".join(t["id"] for t in self.tests_to_run if t["env"] == env)
-            print_log("SUCCESS", f"Tests to run in '{env}': {ids}.", tab_level=0)
+            print_log("INFO", f"Tests to run in '{env}': {ids}.", tab_level=0)
 
         return self.tests_to_run
 
@@ -886,6 +888,7 @@ def launch_group(kao_runner, platform, wrkdir, setup, grouped_tests):
     )
 
 def main():
+    set_log_level(CLI.log_level())
     print_log("INFO", "Starting Bao Kao Framework...", tab_level=0)
     print_log("INFO", f"Current working directory: {CUR_DIR}", tab_level=1)
     wrkdir = prepare_wrkdir(CLI.wrkdir())
@@ -894,15 +897,14 @@ def main():
 
     print_log("INFO", "Populating platforms ...", tab_level=0)
     kao_runner.populate_plats()
-    print_log(
-        "SUCCESS",
+    print_log("INFO",
         f"Platforms populated: {', '.join([plat[0] for plat in kao_runner.plats])}.",
         tab_level=0,
     )
 
     print_log("INFO", "Reading TF configuration ...", tab_level=0)
     kao_runner.parse_args()
-    print_log("SUCCESS", "Runtime TF configuration built.", tab_level=0)
+    print_log("INFO", "Runtime TF configuration built.", tab_level=0)
 
     requested_platform = kao_runner.runtime_config["platform"]
     platform_class = _resolve_platform_class(kao_runner.plats, requested_platform)
@@ -935,7 +937,7 @@ def main():
 
     print_log("INFO", "Discovering tests ...", tab_level=0)
     kao_runner.discover_tests(plat)
-    print_log("SUCCESS", f"Tests discovered: {len(kao_runner.tests)}.", tab_level=0)
+    print_log("INFO", f"Tests discovered: {len(kao_runner.tests)}.", tab_level=0)
 
     print_log("INFO", "Populating benchmarks ...", tab_level=0)
     if not kao_runner.populate_benchmarks():
@@ -962,4 +964,10 @@ def main():
     kao_runner.cleanup()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:  # pylint: disable=broad-except
+        print_log("ERROR", str(error), tab_level=0)
+        if getattr(constants_module, "LOG_LEVEL", 1) > 1:
+            raise
+        sys.exit(1)
