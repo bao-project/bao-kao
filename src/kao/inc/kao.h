@@ -125,8 +125,6 @@ extern const unsigned int kao_tests_num;
 #define LOG_TESTS()                                                                \
     do {                                                                           \
         printf("\n");                                                              \
-        INFO_TAG();                                                                \
-        printf("Final Report\n");                                                  \
         if (kao_tests_failed)                                                      \
             LOG_NOT_SUCCESS();                                                     \
         else                                                                       \

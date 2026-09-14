@@ -33,7 +33,6 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
         self,
         wrkdir,
         tests,
-        benchmark,
         kao_dir,
         tests_srcs,
         bin_name,
@@ -52,7 +51,6 @@ class Baremetal:  # pylint: disable=too-many-instance-attributes
         self.tests = tests
         self.build_flags = build_flags
         self.bin_name = bin_name
-        self.benchmark = benchmark
 
         self.git_url = "https://github.com/bao-project/bao-baremetal-test.git"
         self.git_rev = "2b14d908026f18254333230d457fb8f04d4a6ff4"

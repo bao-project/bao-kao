@@ -90,7 +90,7 @@ class CLI(InputProvider):
         parser.add_argument(
             "-p",
             "--platform",
-            help="Target platform to run the tests/benchmarks on" + plat_lst,
+            help="Target platform to run the tests on" + plat_lst,
             required=True,
             default="",
         )
@@ -182,37 +182,13 @@ class CLI(InputProvider):
         )
 
         parser.add_argument(
-            "-b",
-            "--benchmark",
-            metavar="ID[,ID,...]",
-            nargs="?",
-            const="all",
-            default=None,
-            help=(
-                "Comma-separated list of benchmark IDs to execute. If --benchmark "
-                "is provided without IDs, all discovered benchmarks are executed."
-            ),
-        )
-
-        parser.add_argument(
-            "--benchmark-exclude",
-            metavar="ID[,ID,...]",
-            help=(
-                "Assumes all benchmarks are executed, excluding a comma-separated "
-                "list of benchmark IDs."
-            ),
-            default=False,
-        )
-
-        parser.add_argument(
             "--generate-id-readme",
             metavar="PATH",
             nargs="?",
             const="README.workload-ids.md",
             default=None,
             help=(
-                "Generate a Markdown file mapping discovered test and benchmark "
-                "IDs, then exit.\n"
+                "Print the discovered tests and exit.\n"
                 "If PATH is omitted, writes to README.workload-ids.md"
             ),
         )
@@ -314,25 +290,6 @@ class CLI(InputProvider):
                 "using the -p or --platform argument."
             )
 
-        if args.benchmark is not None and args.benchmark_exclude:
-            raise ValueError(
-                "Cannot specify both --benchmark and --benchmark-exclude "
-                "arguments. Please choose one or the other."
-            )
-
-        test_filters_requested = any(
-            value is not None for value in (args.tags, args.exclude_tags, args.env)
-        )
-        test_mode_requested = (
-            args.test is not None or bool(args.test_exclude) or test_filters_requested
-        )
-        benchmark_mode_requested = args.benchmark is not None or bool(args.benchmark_exclude)
-        if test_mode_requested and benchmark_mode_requested:
-            raise ValueError(
-                "Cannot combine test and benchmark selection arguments. "
-                "Please choose either tests or benchmarks."
-            )
-
         if args.test is not None and args.test != "all":
             args.test = parse_csv_ids(args.test, "Test")
 
@@ -353,15 +310,6 @@ class CLI(InputProvider):
             ("env", "Environment"),
         ):
             setattr(args, attr, parse_csv_tokens(getattr(args, attr), label))
-
-        if args.benchmark is not None and args.benchmark != "all":
-            args.benchmark = parse_csv_ids(args.benchmark, "Benchmark")
-
-        if args.benchmark_exclude:
-            args.benchmark_exclude = parse_csv_ids(
-                args.benchmark_exclude,
-                "Excluded Benchmark",
-            )
 
         valid_echo_options = {"full", "tf", "none"}
         if args.echo not in valid_echo_options:
